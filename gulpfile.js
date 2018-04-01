@@ -17,7 +17,7 @@ gulp.task('test', function() {
     return gulp.src([file_cd.ele + 'js/**/*.*', file_cd.ele + 'page/**/*.*'])
         .pipe(fmd5(function(regContent, promise) {
             md5name = md5name.concat(regContent);
-        }))
+        }, /g/))
         .on('end', function() {
             fs.writeFile('url.txt', md5name.join('\n'))
         })
@@ -55,4 +55,19 @@ gulp.task('qq', function(param) {
     /** 运行结果
     [ 1, 4, 9, 16, 25 ]
     */
+})
+
+
+gulp.task('nginx_url', function() {
+    var regNginx = require('./api/regNginx');
+    return gulp.src('C:/Users/Administrator/Documents/Tencent Files/492055811/FileRecv/access.log')
+        .pipe(regNginx(function(regContent, promise) {
+            md5name = md5name.concat(regContent);
+        }))
+        .on('end', function() {
+            var arr = md5name;
+            var set = new Set(arr);
+            var newArr = Array.from(set);
+            fs.writeFile('nginx_url.txt', newArr.join('\n'))
+        })
 })
