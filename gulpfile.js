@@ -8,7 +8,8 @@ var Q = require('q');
 
 const file_cd = {
     // ele: 'D:/nodework/Crawler/dytt-reptitle/',
-    ele: 'D:/git/SimpleAC/'
+    ele: 'D:/git/SimpleAC/',
+    ACDev: 'D:/git/SimpleAC/SimpleAC/',
 }
 
 var md5name = [];
@@ -70,4 +71,28 @@ gulp.task('nginx_url', function() {
             var newArr = Array.from(set);
             fs.writeFile('nginx_url.txt', newArr.join('\n'))
         })
+})
+
+gulp.task('regCN', function() {
+    var regNginx = require('./api/regCN');
+    var md5name = [];
+    return gulp.src([file_cd.ACDev + 'js/**/*.js', file_cd.ACDev + 'page/**/*.html',
+            '!' + file_cd.ACDev + 'js/jqwidgets-4.1/**/*.js', '!' + file_cd.ACDev + 'js/dataTable/**/*.js', '!' + file_cd.ACDev + 'js/jsHistory/**/*.js'
+        ])
+        .pipe(regNginx(function(regContent, promise) {
+            md5name = md5name.concat(regContent);
+        }))
+        .on('end', function() {
+            var arr = md5name;
+            var set = new Set(arr);
+            var newArr = Array.from(set);
+            fs.writeFile('respone/regCN.txt', newArr.join('\n'))
+        })
+})
+
+gulp.task('regCN2', function() {
+    var regNginx = require('./api/regCN');
+    var md5name = [];
+    return gulp.src([file_cd.ACDev + '**/*.*'])
+        .pipe(gulp.dest('respone/'));
 })
