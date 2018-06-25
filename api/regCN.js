@@ -14,7 +14,7 @@ module.exports = function(options, reg) {
             return cb();
         }
         const content = file.contents.toString();
-        var reg = /[\u4E00-\u9FA5]+/g;
+        var reg = /[\u4E00-\u9FA5，,0-9；;、]+/g;
         // var arr = new Array(content.match(reg));
         var arr = content.match(reg);
         if (arr !== null) {
