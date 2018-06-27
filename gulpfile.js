@@ -78,8 +78,8 @@ gulp.task('regCN', function() {
     var md5name = [];
     return gulp.src([file_cd.ACDev + 'js/**/*.js', file_cd.ACDev + 'page/**/*.html',
             '!' + file_cd.ACDev + 'js/jqwidgets-4.1/**/*.js', '!' + file_cd.ACDev + 'js/dataTable/**/*.js', '!' + file_cd.ACDev + 'js/jsHistory/**/*.js',
-            '!' + file_cd.ACDev + 'page/modules/helpDocument/**/*.*', '!' + file_cd.ACDev + 'js/modules/helpDocument/**/*.*',
-            '!' + file_cd.ACDev + 'js/common/pinying.js', '!' + file_cd.ACDev + 'js/common/address.js'
+            '!' + file_cd.ACDev + 'page/modules/helpDocument/**/*.*', '!' + file_cd.ACDev + 'page/test/**/*.*', '!' + file_cd.ACDev + 'js/modules/helpDocument/**/*.*',
+            '!' + file_cd.ACDev + 'js/common/pinying.js', '!' + file_cd.ACDev + 'js/common/address.js', '!' + file_cd.ACDev + 'js/common/nationalCode.*', '!' + file_cd.ACDev + 'js/common/*.min.*'
         ])
         .pipe(regNginx(function(regContent, promise) {
             md5name = md5name.concat(regContent);
@@ -88,7 +88,7 @@ gulp.task('regCN', function() {
             var arr = md5name;
             var set = new Set(arr);
             var newArr = Array.from(set);
-            fs.writeFile('respone/regCN.txt', newArr.join('\n'))
+            fs.writeFile('respone/regCN.txt', newArr.join('\r\n'))
         })
 })
 

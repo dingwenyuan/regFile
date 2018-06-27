@@ -14,14 +14,24 @@ module.exports = function(options, reg) {
             return cb();
         }
         const content = file.contents.toString();
-        var reg = /[\u4E00-\u9FA5，,0-9；;、]+/g;
+        var reg = /[\u4E00-\u9FA5，,0-9；;、{$} ?？、（）()：:/]+/g;
         // var arr = new Array(content.match(reg));
         var arr = content.match(reg);
         if (arr !== null) {
             arr.push(file.path + '------------------------------------------------------------------------------------------------------------------------------------------------------------------')
         }
+        var re_arr = [];
 
-        options(arr);
+        if (arr && arr.length > 0) {
+            for (let index = 0; index < arr.length; index++) {
+                const element = arr[index];
+                if (/[\u4E00-\u9FA5]/.test(element)) {
+                    re_arr.push(element);
+                }
+            }
+        }
+
+        options(re_arr);
         this.push(file);
         cb();
     });
