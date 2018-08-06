@@ -92,6 +92,21 @@ gulp.task('regCN', function() {
         })
 })
 
+gulp.task('regCN_address', function() {
+    var regNginx = require('./api/regCN');
+    var md5name = [];
+    return gulp.src(file_cd.ele + 'js/**/addressData_en.txt')
+        .pipe(regNginx(function(regContent, promise) {
+            md5name = md5name.concat(regContent);
+        }))
+        .on('end', function() {
+            var arr = md5name;
+            var set = new Set(arr);
+            var newArr = Array.from(set);
+            fs.writeFile('respone/regCN_address.txt', newArr.join('\r\n'))
+        })
+})
+
 gulp.task('regCN_helpDocument', function() {
     var regNginx = require('./api/regCN');
     var md5name = [];
