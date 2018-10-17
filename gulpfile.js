@@ -12,6 +12,34 @@ const file_cd = {
     ACDev: 'D:/git/SimpleAC/SimpleAC/',
 }
 
+/**
+ *往指定目录插入文件，目录不存在创建目录，目前只支持创建一级子目录
+ *
+ * @param {*} dir
+ * @param {*} fileName
+ * @param {*} fileContent
+ */
+const writerToDir = function(dir, fileName, fileContent) {
+    let url = function(dir, fileName) {
+        return dir.replace(/\/+$/, '') + '/' + fileName
+    }
+    let callback = function() {
+        fs.writeFile(url(dir, fileName), fileContent)
+    }
+    fs.readdir(dir, function(err, files, err) {
+        if (!files) {
+            fs.mkdir(dir, function(err) {
+                if (err) {
+                    return console.error(err);
+                }
+                callback();
+            })
+        } else {
+            callback();
+        }
+    })
+}
+
 var md5name = [];
 //测试rename
 gulp.task('test', function() {
@@ -88,9 +116,62 @@ gulp.task('regCN', function() {
             var arr = md5name;
             var set = new Set(arr);
             var newArr = Array.from(set);
-            fs.writeFile('respone/regCN.txt', newArr.join('\r\n'))
+            var t = new Date();
+            writerToDir('respone/' + t.getMonth() + '-' + t.getDate(), 'regCN.txt', newArr.join('\r\n'))
         })
 })
+
+/**
+ *promise读取文件
+ *
+ * @param {*} path
+ * @returns
+ */
+function readfileAsync(path) {
+    return new Promise((resolve, reject) => {
+        fs.readFile(path, 'utf-8', (err, data) => {
+            if (err) {
+                reject(err)
+            } else {
+                resolve(data)
+            }
+        })
+    })
+}
+
+//文件差异比较
+gulp.task('diffRegFile', function() {
+    var t = new Date();
+    Promise.all([readfileAsync('respone/' + t.getMonth() + '-' + t.getDate() + '/regCN.txt'), readfileAsync('respone/9-16/data0716.txt')])
+        .then(function(...res) {
+            var arr = res[0];
+            // console.log(arr[0])
+            // return;
+            let oldData = arr[1].toString().split('\r\n');
+            let data = arr[0].toString().split('\r\n');
+            var newData = [];
+            data.forEach(function(v, i) {
+                var find = false;
+                debugger
+                oldData.forEach(function(ov, oi) {
+                    if (oi == 0 && i == 0) {
+                        console.log([v], [ov.split('=')[0]], ov.split('=')[0].trim() == v.trim())
+                    }
+                    if (ov.split('=')[0].trim() == v.trim()) {
+                        find = true;
+                    }
+                })
+                if (!find) {
+                    newData.push(v.trim())
+                }
+            })
+            console.log('newData:', newData)
+            writerToDir('respone/' + t.getMonth() + '-' + t.getDate(), 'DiffRegCN.txt', newData.join('\r\n'))
+        }).catch(function(e) {
+            console.log(e)
+        })
+})
+
 
 gulp.task('regCN_address', function() {
     var regNginx = require('./api/regCN');
