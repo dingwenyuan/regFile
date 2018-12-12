@@ -131,8 +131,10 @@ function readfileAsync(path) {
     return new Promise((resolve, reject) => {
         fs.readFile(path, 'utf-8', (err, data) => {
             if (err) {
+                console.error('readfileAsync' ,err)
                 reject(err)
             } else {
+                // console.log('readfileAsync' ,data)
                 resolve(data)
             }
         })
@@ -142,7 +144,7 @@ function readfileAsync(path) {
 //文件差异比较
 gulp.task('diffRegFile', function() {
     var t = new Date();
-    Promise.all([readfileAsync('respone/' + t.getMonth() + '-' + t.getDate() + '/regCN.txt'), readfileAsync('respone/9-16/data0716.txt')])
+    Promise.all([readfileAsync('respone/' + t.getMonth() + '-' + t.getDate() + '/regCN.txt'), readfileAsync('respone/' + t.getMonth() + '-' + t.getDate() + '/data0716.txt')])
         .then(function(...res) {
             var arr = res[0];
             // console.log(arr[0])
@@ -172,6 +174,110 @@ gulp.task('diffRegFile', function() {
         })
 })
 
+var md5name = '';
+var i = 0;
+//测试rename
+gulp.task('renameTest', function() {
+    var fmd5 = require('./api/fmd5');
+    var rename = require('gulp-rename');
+    var i = 0;
+    // readfileAsync('gulp-map').then(function(res) {
+    gulp.src('respone/tt/*.*')
+        .pipe(fmd5(function(a, b, c) {
+            md5name = a;
+            if (i == 0) {
+                return b = 99;
+                console.log(b)
+            }
+            i++;
+            console.log('md5:', md5name, b, c)
+        }))
+        // .pipe(rename(function(a, b, c) {
+        //     a.basename = md5name
+        // }))
+        .pipe(gulp.dest(''));
+    // })
+
+})
+
+var index = 0;
+var promiseArray = []
+var readdir = function (path) {
+    var promise=new Promise(function (resolve,reject) {
+        var fs = require("fs");
+        
+        
+        // var ischeckedfile=false;
+        // var lastIndex=0
+        // var time=setInterval(function(){
+        //     if(index==lastIndex){
+        //         readdir
+        //     }else{
+        //         lastIndex=index;
+        //     }
+        // },1000)
+        
+        fs.readdir(path, function (err, files) {
+            if (err) {
+                return console.error(err);
+            }
+            files.forEach(function (file) {
+                file=path.replace(/\/+$/, '') + '/' + file
+                // file=path+file;
+                console.log(file);
+                fs.stat(file, function (err, stats) {
+                    if (err) {
+                        return console.error(err);
+                    }else{
+                        if (stats.isFile()) {
+                            console.log('文件读取中：', ++index, '路径为：' + file)
+
+                            if(file.indexOf('.wxml')>-1||file.indexOf('.wxss')>-1||file.indexOf('.js')>-1){
+                                promiseArray.push(readfileAsync(file))
+                            }
+                            if(index==219){
+                                console.log('index==10',promiseArray)
+                                 Promise.all(promiseArray).then(function(res){    
+                                  var t=new Date()
+                                // writerToDir('respone/' + t.getMonth() + '-' + t.getDate(), '物流小程序代码.txt', res)    
+                                 writerToDir('respone/' + t.getMonth() + '-' + t.getDate(), '云店小程序代码.txt', res)                          
+                                    // resolve(res)
+                                    console.log('Promise.all resolve')
+                                })
+                            }
+                        } else {
+                            readdir(file)
+                        }
+                    }
+                })
+            });
+            
+        });       
+      })
+    return promise;
+}
+
+
+gulp.task('write_code',function () { 
+    // readfileAsync('D://git/logisticsWX//pages//').then(function (res) { 
+    //     console.log('文件读取完成 write_code:',res)
+    //     writerToDir('respone/' + t.getMonth() + '-' + t.getDate(), '物流小程序代码.txt', res)
+    //  })
+    var t = new Date();
+    // readdir('D:/git/logisticsWX/pages/').then(function (res) { 
+    //     console.log('文件读取完成 write_code:',res)
+    //     writerToDir('respone/' + t.getMonth() + '-' + t.getDate(), '物流小程序代码.txt', res)
+    //  }).catch(function (e) { 
+    //      console.error('文件读取失败 write_code:',e)
+    // })
+
+    readdir('D:/git/wxDemo/cloudShop2/').then(function (res) { 
+        // console.log('文件读取完成 write_code:',res)
+        // writerToDir('respone/' + t.getMonth() + '-' + t.getDate(), '云店小程序代码.txt', res)
+     }).catch(function (e) { 
+         console.error('文件读取失败 write_code:',e)
+    })
+})
 
 gulp.task('regCN_address', function() {
     var regNginx = require('./api/regCN');

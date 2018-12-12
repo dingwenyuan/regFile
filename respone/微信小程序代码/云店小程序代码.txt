@@ -1,0 +1,3521 @@
+let app=getApp()
+//let qqmap = require('../../helpers/qqmap-wx-jssdk.min.js')
+let qqmapsdk
+Page({
+  data: {
+    region: ['', '', '请选择'],
+    customItem: '请选择',
+    addrDetail: '',
+    textArea:'',
+    isEdit: false,
+    hasAddr: false,
+    showdelbtn:false,
+    delid:null
+  },
+  onLoad: function (options) {
+    let addressEdit = options.addr
+    if (addressEdit) {
+      addressEdit = JSON.parse(addressEdit)
+      console.log(addressEdit)
+      this.setData({
+        region: [addressEdit.province, addressEdit.city, addressEdit.district],
+        addrDetail: addressEdit.addressDetail,
+        addressEdit:addressEdit,
+        isEdit: true,
+        delid: addressEdit.id//“我的-修改地址”中的删除地址用的
+      })
+      if (options.candel) {//“我的-修改地址”中的删除地址用的
+        this.setData({
+          showdelbtn:true
+        })
+      }
+    }
+    // qqmapsdk = new qqmap({
+    //   key: 'EFZBZ-VFC3X-REB4R-7HPCG-5EPIQ-GHFTG' //这里自己的key秘钥进行填充
+    // });
+  },
+  onReady: function () {
+
+  },
+  onShow: function () {
+
+  },
+  onUnload:function(){
+    this.setData({
+      region: ['', '', '请选择'],
+      addrDetail: '请输入详细地址',
+      isEdit: false,
+      hasAddr:false
+    })
+  },
+  bindRegionChange: function (e) {
+    this.setData({
+      region: e.detail.value
+    })
+  },
+  inputChange: function (e) {
+    this.setData({
+      addrDetail: e.detail.value
+    })
+  },
+  //“我的-修改地址”中的删除地址用的
+  delBtn(){
+    let that = this
+    wx.showModal({
+      title: '提示',
+      content: '确定删除吗？',
+      success(res) {
+        if (res.confirm) {
+          let params = [that.data.delid]
+          app.HttpService.addrDelete(params).then((res) => {
+            wx.navigateBack({});
+          }).catch((res) => {
+
+          })
+        } else if (res.cancel) {
+          
+        }
+      }
+    })
+    
+  },
+  saveBtn: function (e) {
+    let val = this.data.addrDetail
+    let region = this.data.region
+    let picker = false
+    let isEdit = this.data.isEdit
+    for (let i in region) {
+      if (region[i] == '请选择') {
+        picker = true
+        break
+      }
+    }
+    if (picker) {
+      wx.showModal({
+        title: '提示',
+        content: '请选择省市区',
+      })
+      return
+    }
+    if (val == '') {
+      wx.showModal({
+        title: '提示',
+        content: '请输入详细地址',
+      })
+      return
+    }
+    let pamars=[{
+      province: region[0],
+      city: region[1],
+      district: region[2],
+      addressDetail: val
+    }]
+    if (isEdit) {
+      pamars[0].id = this.data.addressEdit.id
+      app.HttpService.addrUpdate(pamars).then((res) => {
+        if (res.length > 0){
+          wx.navigateBack({})
+        }
+      }).catch((error) => {
+        console.log(error)
+      })
+    }else{
+      app.HttpService.addrCreate(pamars).then((res) => {
+          console.log(res)
+        if (res.length>0) {
+          wx.navigateBack({})
+        }
+      }).catch((error) => {
+        app.AcFunc.myTotal(error, 'none')
+      })
+    }
+  },
+  getAddress: function () {
+    let textArea = this.data.textArea
+    let that =this
+    if (textArea){
+      app.HttpService.addrParse({
+        addressDetail: textArea
+      }).then((res)=>{
+        console.log(res)
+        that.setData({
+          region: [res.province, res.city, res.district],
+          addrDetail: res.addressDetail,
+        })
+      }).catch((error)=>{
+        app.AcFunc.myTotal(error)
+      })
+    }else{
+      app.AcFunc.myTotal('请输入地址信息','none')
+    }
+    this.setData({
+      hasAddr: true
+    })
+  },
+  getUserLocation: function () {
+    let that = this;
+    wx.getSetting({
+      success: (res) => {
+        // res.authSetting['scope.userLocation'] == undefined    表示 初始化进入该页面
+        // res.authSetting['scope.userLocation'] == false    表示 非初始化进入该页面,且未授权
+        // res.authSetting['scope.userLocation'] == true    表示 地理位置授权
+        if (res.authSetting['scope.userLocation'] != undefined && res.authSetting['scope.userLocation'] != true) {
+          wx.showModal({
+            title: '请求授权当前位置',
+            content: '需要获取您的地理位置，请确认授权',
+            success: function (res) {
+              if (res.cancel) {
+                wx.showToast({
+                  title: '拒绝授权',
+                  icon: 'none',
+                  duration: 1000
+                })
+              } else if (res.confirm) {
+                wx.openSetting({
+                  success: function (dataAu) {
+                    if (dataAu.authSetting["scope.userLocation"] == true) {
+                      wx.showToast({
+                        title: '授权成功',
+                        icon: 'success',
+                        duration: 1000
+                      })
+                      //再次授权，调用wx.getLocation的API
+                      that.getLocation();
+                    } else {
+                      wx.showToast({
+                        title: '授权失败',
+                        icon: 'none',
+                        duration: 1000
+                      })
+                    }
+                  }
+                })
+              }
+            }
+          })
+        } else if (res.authSetting['scope.userLocation'] == undefined) {
+          //调用wx.getLocation的API
+          that.getLocation();
+        }
+        else {
+          //调用wx.getLocation的API
+          that.getLocation();
+        }
+      }
+    })
+  },
+  // 微信获得经纬度
+  getLocation: function () {
+    let that = this;
+    wx.getLocation({
+      type: 'wgs84',
+      success: function (res) {
+        var latitude = res.latitude
+        var longitude = res.longitude
+        var speed = res.speed
+        var accuracy = res.accuracy;
+        that.getLocal(latitude, longitude)
+      },
+      fail: function (res) {
+        console.log('fail' + JSON.stringify(res))
+      }
+    })
+  },
+  // 获取当前地理位置
+  getLocal: function (latitude, longitude) {
+    let that = this;
+    qqmapsdk.reverseGeocoder({
+      location: {//120.741459,31.260328
+        latitude: latitude,
+        longitude: longitude
+      },
+      success: function (res) {
+        console.log(res)
+        let address = res.result.address
+        let province = res.result.ad_info.province
+        let city = res.result.ad_info.city
+        let district = res.result.ad_info.district ? res.result.ad_info.district : ''
+        let street = res.result.address_component.street ? res.result.address_component.street : ''
+        let street_number = res.result.address_component.street_number ? res.result.address_component.street_number : ''
+        that.setData({
+          region: [province, city, district],
+          addrDetail: street,
+          textArea: address
+        })
+
+      },
+      fail: function (res) {
+        console.log(res);
+      },
+      complete: function (res) {
+        // console.log(res);
+      }
+    });
+  },
+  textChange:function(e){
+    let val=e.detail.value
+    this.setData({
+      textArea: val
+    })
+  }
+})
+,{"navigationBarTitleText": "新增收货地址"},<form>
+  <view class='addressMod'>
+    <view class='inputMod flex'>
+      <view class='name'>选择地址</view>
+      <view class='flex-1'>
+
+        <picker mode="region" bindchange="bindRegionChange" value="{{region}}" custom-item="{{customItem}}">
+          <view class="picker c666">
+            {{region[0]}}{{region[1]}}{{region[2]}}
+          </view>
+          <icon class='iconfont icon-Right'></icon>
+        </picker>
+
+      </view>
+    </view>
+    <view class='inputMod flex'>
+      <view class='name'>详细地址</view>
+      <view class='flex-1'>
+        <!-- <icon class='iconfont icon-Right'></icon> -->
+        <input type='text' class='c666' placeholder='请输入详细地址' value='{{addrDetail}}' bindinput='inputChange'></input>
+      </view>
+    </view>
+    <view class='intelAddr'>
+      <view class='title'>
+        <image src='/images/order/ai.png' mode='widthFix'></image><text>地址智能识别</text>
+      </view>
+      <view>
+        <textarea class='border-box' name='aiAddress' value='{{textArea}}' placeholder='例:上海市徐汇区枫林街道斜土路100号' bindinput='textChange'></textarea>
+      </view>
+      <view class='clearfix'>
+        <button type='{{textArea?"success":""}}' bindtap='getAddress'>智能识别</button>
+      </view>
+    </view>
+    <view class='btnBox'>
+      <button type='success' bindtap='saveBtn'>保存</button>
+    </view>
+    <view class='btnBox del' wx:if='{{showdelbtn}}'>
+      <button type='success' bindtap='delBtn'>删除</button>
+    </view>
+  </view>
+
+</form>,.addressMod{
+  margin-top:24rpx;
+}
+.inputMod{
+  background: #fff;
+  padding:0 20rpx;
+  height:80rpx;
+  line-height: 80rpx;
+  border-bottom:1px solid #EDEDF2;
+}
+.inputMod .name{
+  width: 140rpx;
+}
+.inputMod .flex-1{
+  text-align: right;
+  position: relative;
+}
+.inputMod input{
+  height:100%;
+  line-height: 80rpx;
+}
+.inputMod picker,.inputMod input{
+  padding-right:40rpx;
+}
+.inputMod .icon-Right{
+  position: absolute;
+  font-size:24rpx;
+  right:0;
+  top:0;
+}
+.intelAddr{
+  margin-top:24rpx;
+  background: #fff;
+  padding:0 20rpx;
+}
+.intelAddr .title{
+  padding:20rpx 0;
+  font-size:28rpx;
+}
+.intelAddr .title image{
+  display: inline-block;
+  width: 50rpx;
+  vertical-align: top;
+}
+.intelAddr .title text{
+  display: inline-block;
+  margin-left:20rpx;
+}
+.intelAddr textarea{
+  width: 100%;
+  background: #f8f8f8;
+  height:140rpx;
+  border-radius: 0.3em;
+  padding:20rpx;
+}
+.intelAddr .clearfix{
+  padding:20rpx 0;
+}
+.intelAddr button{
+  float:right;
+  font-size:28rpx;
+  color:#999;
+}
+.btnBox{
+  margin-top:60rpx;
+  padding:20rpx;
+}
+.del{
+  margin-top: 30rpx;
+}
+.del button{
+  background: transparent;
+  color: #333!important;
+  border-color: #CFCFCF;
+},const app = getApp()
+import AcFunc from '../../helpers/acFunc.js'
+Page({
+  data: {
+    p: null,
+    carts: [],
+    tiptext: '管理',
+    origincheck: 0,
+    originnum: 0,
+    totalnum: AcFunc.money(0, 2, false),
+    allcheck: false,
+    txtStyle: "left:0;",
+    editIndex: 0,
+    delBtnWidth: 158, //删除按钮宽度单位（rpx）
+    stateshow: true,
+    showtip: false,
+    showtiptext: '',
+  },
+  onLoad: function(option) {
+  },
+  onShow: function() {
+    this.setData({
+      allcheck: false,
+      totalnum: AcFunc.money(0, 2, false),
+      originnum: 0,
+      origincheck: 0,
+      stateshow: true,
+      tiptext: '管理',
+    })
+    this.getCart();
+    app.setMsgCount()
+  },
+  //获取购物车信息
+  getCart() {
+    let that = this;
+    let topnum = 0;
+    let param = {
+      pageNum: 0,
+      pageSize: 1000
+    }
+    let againpro = wx.getStorageSync('againOrder')
+    app.setCartCount();
+    that.sv = that.selectComponent("#cartlazyRoll");
+    app.HttpService.cartlist(param).then(res => {
+      let p = getApp().P();
+      if (res.cartVOS && res.cartVOS.length > 0) {
+        for (let a = 0; a < res.cartVOS.length; a++) {
+          res.cartVOS[a].modalname = res.cartVOS[a].name
+          if ((res.cartVOS[a].specId !== 0 && p.specFlag) && (res.cartVOS[a].colorId !== 0 && p.colorFlag)){
+            res.cartVOS[a].modalname = res.cartVOS[a].modalname + '-' + res.cartVOS[a].specName + '-' + res.cartVOS[a].colorName
+          }
+          if ((res.cartVOS[a].specId == 0 || !p.specFlag) && (res.cartVOS[a].colorId !== 0 && p.colorFlag)) {
+            res.cartVOS[a].modalname = res.cartVOS[a].modalname + '-' + res.cartVOS[a].colorName
+          }
+          if ((res.cartVOS[a].specId !== 0 && p.specFlag) && (res.cartVOS[a].colorId == 0 || !p.colorFlag)) {
+            res.cartVOS[a].modalname = res.cartVOS[a].modalname + '-' + res.cartVOS[a].specName
+          }
+          res.cartVOS[a].colorNamebool = res.cartVOS[a].colorId == 0?false:true
+          res.cartVOS[a].specNamebool = res.cartVOS[a].specId == 0 ? false : true
+          res.cartVOS[a].selected = false;
+          topnum = topnum + res.cartVOS[a].qty
+          //再次下单的产品需勾选
+          if (againpro.length>0){
+            for (let b = 0; b < againpro.length;b++){
+              if (res.cartVOS[a].id == againpro[b].id){
+                res.cartVOS[a].selected = true;
+              }
+            }
+          }       
+          res.cartVOS[a].imgsrc = res.cartVOS[a].photo ? app.getxsimg('thumbnail', res.cartVOS[a].photo) : '/images/buy/defaultpro.png'
+          if (res.cartVOS[a].unitPrice || res.cartVOS[a].unitPrice == 0){
+            res.cartVOS[a].unitPricemark = '￥' + res.cartVOS[a].unitPrice;
+            if (res.cartVOS[a].unitName && (((p['viewProductSalesPriceOne'] || p['viewProductSalesPriceTwo'] || p['viewProductSalesPriceThree'] || p['viewProductSalesPriceFour']) && p['morePriceFlag']) || (!p['morePriceFlag'] && p['viewProductSalesPriceOne']))) {
+              res.cartVOS[a].unitNameline = '/' + res.cartVOS[a].unitName
+            } else if (res.cartVOS[a].unitName){
+              res.cartVOS[a].unitNameline = res.cartVOS[a].unitName
+            }
+          }else{
+            if (res.cartVOS[a].unitName) {
+              res.cartVOS[a].unitNameline = res.cartVOS[a].unitName
+            }
+          }
+        }
+        that.setData({
+          p: p,
+          carts: res.cartVOS,
+          allcheck: false,
+          totalnum: AcFunc.money(0, 2, false),
+          originnum: 0,
+          origincheck: 0,
+        });
+      }else{
+        that.setData({
+          p: p,
+          carts: [],
+          allcheck: false,
+          totalnum: AcFunc.money(0, 2, false),
+          originnum: 0,
+          origincheck: 0,
+        });
+      }
+      that.sv.init({
+        height: 194,
+        metaArray: this.data.carts,
+        showLength: 10,
+        scrollHeight: 1100
+      });
+      if (againpro.length > 0) {
+        this.checknumFunc()
+        this.checktotalnumFunc()
+        this.getTotalPrice()
+        this.ifcheckAll(this.data.carts)
+      }
+      this.sv.reload();
+      wx.setNavigationBarTitle({
+        title: '购物车(' + AcFunc.money(topnum, 6, true)+')'
+      })
+      wx.removeStorageSync('againOrder')
+    })
+  },
+  //点击产品名称弹框出现
+  viewProname(e) {
+    this.setData({
+      showtip: true,
+      showtiptext: e.currentTarget.dataset.name
+    })
+  },
+  //隐藏产品名称弹框
+  hidetip() {
+    this.setData({
+      showtip: false,
+    })
+  },
+  //左滑开始
+  touchS: function (e) {
+    console.log("touchS:" + e);
+    var list = this.data.carts;
+    for (let a = 0; a < list.length;a++){
+      list[a].txtStyle = "left:0px";
+    }
+    this.setData({
+      carts: list
+    });
+    if (e.touches.length == 1) {
+      this.setData({
+        startX: e.touches[0].clientX
+      });
+    }
+    this.sv.reload();
+  },
+  //左滑移动
+  touchM: function(e) {
+    console.log(e);
+    var that = this
+    if (e.touches.length == 1) {
+      var moveX = e.touches[0].clientX;
+      var disX = that.data.startX - moveX;
+      var delBtnWidth = that.data.delBtnWidth;
+      var txtStyle = "";
+      if (disX == 0 || disX < 0) {
+        txtStyle = "left:0px";
+      } else if (disX > 0) {
+        txtStyle = "left:-" + disX + "rpx";
+        if (disX >= delBtnWidth) {
+          txtStyle = "left:-" + delBtnWidth + "rpx";
+        }
+      }
+      var index = e.currentTarget.dataset.index;
+      var list = that.data.carts;
+      list[index].txtStyle = txtStyle;
+      this.setData({
+        carts: list
+      });
+      this.sv.reload();
+    }
+  },
+  //左滑移动结束
+  touchE: function(e) {
+    var that = this
+    if (e.changedTouches.length == 1) {
+      var endX = e.changedTouches[0].clientX;
+      var disX = that.data.startX - endX;
+      var delBtnWidth = that.data.delBtnWidth;
+      var txtStyle = disX > delBtnWidth / 2 ? "left:-" + delBtnWidth + "rpx" : "left:0px";
+      var index = e.currentTarget.dataset.index;
+      var list = that.data.carts;
+      list[index].txtStyle = txtStyle;
+      that.setData({
+        carts: list
+      });
+      this.sv.reload();
+    }
+  },
+  //购物车管理批量删除
+  manageCarts(e) {
+    var that = this;
+    var tip = e.currentTarget.dataset.tip;
+    if (tip == "管理") {
+      that.setData({
+        tiptext: '完成',
+        stateshow: false
+      });
+    } else {
+      that.setData({
+        tiptext: '管理',
+        stateshow: true
+      });
+    }
+  },
+  //数量输入改变
+  changeqty(e){
+    let changeindex = e.currentTarget.dataset.index;
+    let changeiteminfo = e.currentTarget.dataset.iteminfo;
+    let val = e.detail.value;
+    let point = val.indexOf('.');
+    if (point>-1){
+      let valother = val.substr(0, point);
+      if (valother.length > 10) {
+        val = val.substr(0, 10);                                                           
+      }
+    }else{
+      val = val.substr(0, 10); 
+    }
+    val = app.AcFunc.money(val, 6, true)
+    if (val == 0 || val == '' || val <0) {
+      val = 1
+    }
+    let carts = this.data.carts;
+    carts[changeindex].qty = val;
+    this.editcart(carts, changeindex, changeiteminfo);
+  },
+  //数量减操作
+  touchminus(e) {
+    let minusindex = e.currentTarget.dataset.index;
+    let minusiteminfo = e.currentTarget.dataset.iteminfo;
+    let carts = this.data.carts;
+    if (carts[minusindex].qty > 1) {
+      carts[minusindex].qty--
+      carts[minusindex].qty = app.AcFunc.money(carts[minusindex].qty, 6, true);
+      this.editcart(carts, minusindex, minusiteminfo);
+    }
+  },
+  //数量加操作
+  touchplus(e) {
+    let plusindex = e.currentTarget.dataset.index;
+    let plusiteminfo = e.currentTarget.dataset.iteminfo;
+    let carts = this.data.carts;
+    carts[plusindex].qty++
+    carts[plusindex].qty = app.AcFunc.money(carts[plusindex].qty, 6, true);
+    this.editcart(carts, plusindex, plusiteminfo);
+  },
+  // 编辑购物车数量
+  editcart(carts, index, iteminfo) {
+    let that = this;
+    let topnum = 0;
+    let param = {
+      id: iteminfo.id,
+      qty: carts[index].qty,
+      prodId: iteminfo.prodId,
+      specId: iteminfo.specId,
+      unitId: iteminfo.unitId,
+      colorId: iteminfo.colorId,     
+      multiPriceId: iteminfo.multiPriceId,
+      onlyUpdateQty:true,
+      eachCarton: iteminfo.eachCarton,
+      cartons: iteminfo.cartons,
+    }
+    app.HttpService.editcart(param).then(res => {
+      for (let a = 0; a < this.data.carts.length;a++){
+        topnum = topnum + this.data.carts[a].qty
+      }
+      that.setData({
+        carts: carts,
+      });
+      wx.setNavigationBarTitle({
+        title: '购物车(' + AcFunc.money(topnum, 6, true) + ')'
+      })
+      that.checknumFunc();
+      that.getTotalPrice();
+      that.sv.reload();
+    }).catch(error => {
+      console.log(error)
+    })
+  },
+  //购物车商品选中状态改变
+  changeState: function(e) {
+    var checkindex = e.currentTarget.dataset.index;
+    var carts = this.data.carts;
+    var selected = carts[checkindex].selected;
+    carts[checkindex].selected = !selected;
+    this.setData({
+      carts: carts
+    });
+    //如果所有产品都被选中了，全选的勾也要勾上
+    this.ifcheckAll(this.data.carts)
+    // let choose = 0;
+    // for(let a = 0;a<this.data.carts.length;a++){
+    //   if (this.data.carts[a].selected){
+    //     choose++;
+    //   }
+    // }
+    // if (choose == this.data.carts.length){
+    //   this.setData({
+    //     allcheck: true
+    //   });
+    // }else{
+    //   this.setData({
+    //     allcheck: false
+    //   });
+    // }
+    this.checknumFunc();
+    this.checktotalnumFunc();
+    this.getTotalPrice();
+    this.sv.reload();
+  },
+  //全选事件
+  selectAll: function() {
+    var allcheck = !this.data.allcheck;
+    var carts = this.data.carts;
+    if (allcheck) {
+      for (var i = 0; i < carts.length; i++) {
+        carts[i].selected = true;
+      }
+    } else {
+      for (var i = 0; i < carts.length; i++) {
+        carts[i].selected = false;
+      }
+    }
+    this.setData({
+      allcheck: allcheck,
+      carts: carts
+    });
+    this.checknumFunc();
+    this.getTotalPrice();
+    this.checktotalnumFunc();
+    this.sv.reload();
+  },
+  //计算顶部数量
+  checknumFunc() {
+    var carts = this.data.carts;
+    var total = 0;
+    for (var j = 0; j < carts.length; j++) {
+      if (carts[j].selected) {
+        total += carts[j].qty;
+      }
+    }
+    this.setData({
+      originnum: AcFunc.money(total, 6, true),
+    });
+    this.sv.reload();
+  },
+  //计算顶部已选数量
+  checktotalnumFunc() {
+    var carts = this.data.carts;
+    var checktotal = 0;
+    for (var b = 0; b < carts.length; b++) {
+      if (carts[b].selected) {
+        checktotal++;
+      }
+    }
+    this.setData({
+      origincheck: checktotal
+    });
+    this.sv.reload();
+  },
+  //计算合计价格
+  getTotalPrice() {
+    let that = this
+    var carts = this.data.carts;
+    var totalprice = 0;
+    for (var c = 0; c < carts.length; c++) {
+      if (carts[c].selected) {
+        let amountFormula = carts[c].amountFormula //金额公式
+        let price = app.AcFunc.countTotalPrice(amountFormula, carts[c])
+        if (isNaN(price)){
+          price = 0;
+        }
+        totalprice = totalprice + parseFloat(price)
+      }
+    }
+    this.setData({
+      totalnum: AcFunc.money(totalprice, 2, false),
+    });
+    this.sv.reload();
+  },
+  //左滑删除单个购物车事件
+  delItem(e) {
+    let that = this;
+    wx.showModal({
+      title: '提示',
+      content: '确定删除吗',
+      success(res) {
+        if (res.confirm) {
+          let delid = e.currentTarget.dataset.delid;
+          that.delFunc([delid]);
+        } else if (res.cancel) {}
+      }
+    })
+  },
+  //批量删除事件
+  deltogether() {
+    let that = this;
+    let idarr = [];
+    let carts = that.data.carts;
+    for (var d = 0; d < carts.length; d++) {
+      if (carts[d].selected) {
+        idarr.push(carts[d].id);
+      }
+    }
+    if (idarr.length>0){
+      wx.showModal({
+        title: '提示',
+        content: '确定删除吗',
+        success(res) {
+          if (res.confirm) {
+            that.delFunc(idarr);
+          } else if (res.cancel) { }
+        }
+      })
+    }else{
+      wx.showToast({
+        'title': '请先选择产品哦',
+        icon: 'none'
+      });
+    }
+    
+  },
+  //删除购物车事件（单个删除，多个删除）
+  delFunc(delid) {
+    let that = this;
+    app.HttpService.delcart(delid).then(res => {
+      that.getCart();
+    })
+  },
+  //跳转产品详情
+  toprodetail: function (e) {
+    let proditem = e.currentTarget.dataset.proditem;
+    delete proditem.imgsrc
+    proditem.fromType = 'cart'
+    proditem = JSON.stringify(proditem)
+    wx.navigateTo({
+      url: '/pages/productdetail/productdetail?detailVO=' + proditem
+    })
+  },
+  //提交订单
+  confirmOrder: function() {
+    let paypro = []
+    var carts = this.data.carts;
+    for (var d = 0; d < carts.length; d++) {
+      if (carts[d].selected) {
+        delete carts[d].imgsrc
+        paypro.push(carts[d])
+      }
+    }
+    if (paypro.length==0){
+      wx.showToast({
+        'title': '请先选择产品哦',
+        icon: 'none'
+      });
+      return;
+    }
+    paypro = JSON.stringify(paypro)
+    wx.navigateTo({
+      url: '/pages/order/confirmOrder/index?cartdata=' + paypro + '&totalPrice=' + this.data.totalnum,
+    })
+  },
+  showimgBig(event) {
+    AcFunc.imgBig(event)
+  },
+  ifcheckAll(carts) {    //如果所有产品都被选中了，全选的勾也要勾上
+    let choose = 0;
+    for (let a = 0; a < this.data.carts.length; a++) {
+      if (this.data.carts[a].selected) {
+        choose++;
+      }
+    }
+    if (choose == this.data.carts.length) {
+      this.setData({
+        allcheck: true
+      });
+    } else {
+      this.setData({
+        allcheck: false
+      });
+    }
+  },
+  emptyFunc(){//输入框防止跳转产品详情的空函数
+  }
+}),{
+  "navigationBarTitleText": "购物车",
+  "usingComponents": {
+    "lazyRoll": "/assets/components/lazyRoll/index"
+  } 
+},<view catchtap='hidetip'>
+  <view class='carthead flex'>
+    <view catchtap='selectAll'>
+      <image src='/images/common/checked.png' class='checkimg' wx:if='{{allcheck}}'></image>
+      <image src='/images/common/uncheck.png' class='checkimg' wx:if='{{!allcheck}}'></image>
+    </view>
+    <view class='fontsize26'>已选:{{origincheck}}</view>
+    <view class='flex-1 nums fontsize26'>数量:{{originnum}}</view>
+    <view class='blue fontsize26' catchtap='manageCarts' data-tip='{{tiptext}}'>{{tiptext}}</view>
+  </view>
+  <view class='cartList'>
+    <lazyRoll id='cartlazyRoll'>
+      <view class='cartone proDetail flex' wx:for="{{array}}" style="top:{{item._top}}rpx;" wx:key="">
+        <view class="goodDetail" style="{{item.txtStyle}}" bindtouchstart="touchS" bindtouchmove="touchM" bindtouchend="touchE" data-index="{{item._index}}">
+          <view class='flex f-row' catchtap='toprodetail' data-proditem='{{item}}'>
+            <view class='self-center' catchtap='changeState' data-index="{{item._index}}">
+              <image src='/images/common/checked.png' class='checkimg' wx:if='{{item.selected}}'></image>
+              <image src='/images/common/uncheck.png' class='checkimg' wx:if='{{!item.selected}}'></image>
+            </view>
+            <view class='self-center' wx:if="{{(p['imgFlag']&&p['viewProductPhoto'])}}" catchtap='showimgBig' data-src='{{item.imgsrc}}'>
+              <image src='{{item.imgsrc}}' class='proimg' lazy-load="true"></image>
+            </view>
+            <view class='flex-1'>
+              <view class='proname proremark overpoint'>
+                <text catchtap='viewProname' data-name='{{item.modalname}}'>
+                  <text>{{item.name}}</text>
+                  <text wx:if="{{(p['specFlag']&&item.specNamebool)||(p['colorFlag']&&item.colorNamebool)}}">-</text>
+                  <text wx:if="{{p['specFlag']}}">{{item.specName}}</text>
+                  <text wx:if="{{p['specFlag']&&p['colorFlag']&&item.specNamebool&&item.colorNamebool}}">-</text>
+                  <text wx:if="{{p['colorFlag']}}">{{item.colorName}}</text>
+                </text>
+              </view>
+              <view class='fs10 c666 proremark overpoint' wx:if="{{p['viewProductRemark']}}">备注:{{item.remark}}</view>
+              <view class='flex opernum'>
+                <view class='red flex-1 self-center flex'>
+                  <view wx:if="{{((p['viewProductSalesPriceOne']||p['viewProductSalesPriceTwo']||p['viewProductSalesPriceThree']||p['viewProductSalesPriceFour'])&&(p['morePriceFlag']))||(!p['morePriceFlag']&&p['viewProductSalesPriceOne'])}}">
+                  {{item.unitPricemark}}
+                  </view>
+                  <view wx:if="{{(p['unitFlag'])&&(p['viewProductUnit'])}}">{{item.unitNameline}}</view>
+                </view>
+                <view class='operInput clearfix'>
+                  <view class='iconfont icon-minus float-left' hover-class='touch' hover-stay-time='100' data-index="{{item._index}}" catchtap='touchminus' data-iteminfo='{{item}}'></view>
+                  <input value='{{item.qty}}' catchtap='emptyFunc' bindblur="changeqty" data-index="{{item._index}}" data-iteminfo='{{item}}' type='digit' maxlength='17'></input>
+                  <view class='iconfont icon-plus float-right' hover-class='touch' hover-stay-time='100' data-index="{{item._index}}" catchtap='touchplus' data-iteminfo='{{item}}'></view>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view catchtap="delItem" class="posit" data-index="{{item._index}}" data-delid="{{item.id}}">
+          <view>删除</view>
+        </view>
+      </view>
+    </lazyRoll>
+  </view>
+  <view class='flex just-con-b payline' wx:if="{{stateshow}}">
+    <view class='totalnum'>
+      合计:
+      <text>￥{{totalnum}}</text>
+    </view>
+    <view class='paybtn' catchtap='confirmOrder'>提交订单</view>
+  </view>
+  <view class='flex just-con-r payline' wx:if="{{!stateshow}}">
+    <view class='paybtn' catchtap='deltogether'>删除</view>
+  </view>
+</view>
+<view class='pronametip' wx:if="{{showtip}}">
+  <view class='closeimg' catchtap='hidetip'>
+    <image src='/images/common/proname.png'></image>
+  </view>
+  {{showtiptext}}
+</view>,page{
+  background: #EFEFF4;
+}
+.fontsize26{
+  font-size: 26rpx;
+}
+.checkimg{
+  width: 40rpx;
+  height: 40rpx;
+  margin-right: 20rpx;
+}
+.carthead{
+  width: 100%;
+  background: #fff;
+  height:80rpx;
+  line-height: 80rpx;
+  padding:0 20rpx;
+  box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+  position: fixed;
+  top:0;
+  left:0;
+  z-index: 99999;
+}
+.carthead .nums{
+  margin-left:80rpx;
+}
+.cartList{
+  margin-top:104rpx;
+  padding-bottom: 90rpx;
+  background: #fff;
+  height: 100%;
+}
+.cartone{
+  position: relative;
+  border-bottom: 2rpx solid #EFEFF4;
+  height: 190rpx;
+}
+.proname{
+  font-size: 26rpx;
+  color: #333;
+  line-height: 52rpx;
+}
+.posit{
+  position: absolute;
+  right: 0;
+  top:0rpx;
+  background: #FE3824;
+  width: 158rpx;
+  color: #fff;
+  text-align: center;
+  font-size: 30rpx;
+  height: 100%;
+  align-items:center; 
+  display: -webkit-flex;
+  justify-content:center;
+}
+.goodDetail {
+  width: 750rpx;
+  padding:20rpx;
+  position: relative;
+  left: 0;
+  top:0;
+  background: #fff;
+  box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+  z-index: 9999;
+}
+.proimg{
+  width: 130rpx;
+  height: 130rpx;
+  margin-right:20rpx;
+}
+.goodDetail .opernum{
+  margin-top:10rpx;
+}
+.goodOper{
+  display: inline-block;
+}
+.goodOper{
+  height: 100%;
+  width: 158rpx;
+  background: #FE3824;
+  color: #fff;
+  font-size: 30rpx;
+  text-align: center;
+}
+.operInput input{
+  width: 92rpx;
+}
+.proremark{
+  width: 500rpx;
+}
+.payline{
+  background: #fff;
+  width: 750rpx;
+  height: 90rpx;
+  line-height: 90rpx;
+  padding-left: 20rpx;
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  z-index: 9999;
+
+}
+.totalnum{
+  font-size: 26rpx;
+  color: #333;
+}
+.totalnum text{
+  font-size: 26rpx;
+  color: #FE3824;
+}
+.paybtn{
+  width: 238rpx;
+  height: 90rpx;
+  background:#00A6F5;
+  text-align: center;
+  line-height: 90rpx;
+  color: #fff;
+}
+.pronametip{
+  width: 410rpx;
+  padding: 30rpx;
+  box-sizing: border-box;
+  background: #000;
+  opacity: 0.5;
+  color: #fff;
+  position: fixed;
+  top:300rpx;
+  left: 170rpx;
+  z-index: 9999;
+  border-radius: 8rpx;
+  text-align: center;
+}
+.closeimg image{
+  width: 26rpx;
+  height: 26rpx;
+  position: absolute;
+  right: 10rpx;
+  top:10rpx;
+  z-index: 10000;
+},const app = getApp();
+import AcFunc from '../../helpers/acFunc.js'
+let downanimation = wx.createAnimation({
+  duration: 400,
+  timingFunction: 'ease',
+});
+let openimg;//打开图片会触发用onshow事件，此值是用于阻止此类情况的
+Page({
+  data: {
+    p: null,
+    sortShow: false,
+    sortlistshow: false,
+    sortAnimate: {},
+    downAnimate: {},
+    sortList: [{
+      sorttype: 'name',
+      name: '产品名称',
+      sortorder: 'asc'
+    },  {
+      sorttype: 'sku',
+      name: '货号',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'barcode',
+      name: '条形码',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'clearSort',
+      name: '清除排序',
+      sortorder: 'asc'
+    }],
+    sortordername: '排序',
+    searchcontent: '',
+    tabindex: 'all',
+    tabtx: '全部',
+    prolisttotal: 0,
+    searchobj: {},
+    refresh: true,
+    shopmodal: true,
+    openlimit:false,//排序的权限只有第一次需要判断，不然会多次执行
+    indexnum: 0,
+    classifylist: [],
+    prolist: [],
+    salerlogo: '',
+    salerdes: '暂无该店介绍哦',
+    salermodal: [],
+    placeholder1: '',
+    placeholder2: '',
+    placeholder3: '',
+    classifyheight: 0
+  },
+  onLoad: function(options) {
+    app.loginInfo();
+    let h = wx.getSystemInfoSync().screenHeight - 200
+    this.setData({
+      classifyheight: h,
+      openlimit: true,
+    })
+  },
+  onShow: function() {
+    if (openimg) {
+      openimg = false;
+      return;
+    }
+    if (!wx.getStorageSync('refresh')) {
+      let sortList = this.data.sortList
+      for (let a = 0; a < sortList.length; a++) {
+        sortList[a].sortorder = 'asc'
+      }
+      if (this.data.sortShow) {
+        this.endSort()
+      }
+      this.setData({
+        sortList: sortList,
+        searchcontent: '',
+        tabindex: 'all',
+        prolist: [],
+        prolisttotal: 0,
+        tabtx: '全部',
+        sortordername: '排序',
+        searchobj: {
+          pageSize: 10,
+          pageNum: 0,
+          prodTypeIdList: []
+        },
+        refresh: true
+      })
+      this.resClassify();
+      this.resFunc();
+      app.setMsgCount()     
+    }
+    wx.setStorageSync('refresh', false);
+    app.setCartCount();
+    //加入购物车返回(返回产品id)时，需保留当前页面
+    if (wx.getStorageSync('prodId')){
+      let prolist = this.data.prolist
+      for (let v = 0; v<prolist.length;v++){
+        if (prolist[v].id == wx.getStorageSync('prodId')){
+          prolist[v].existCart = true
+        }
+      }
+      this.setData({
+        prolist: prolist
+      })
+      wx.removeStorageSync('prodId')
+    }
+  },
+  bindSort: function(e) { //展开排序事件
+    let sortShow = this.data.sortShow;
+    if (sortShow) {
+      this.endSort()
+    } else {
+      downanimation.rotate('180').step()
+      this.setData({
+        sortlistshow: true,
+        downAnimate: downanimation.export(),
+        sortShow: true
+      })
+    }
+  },
+  endSort: function() { //缩起排序事件
+    downanimation.rotate('0').step()
+    this.setData({
+      sortlistshow: false,
+      downAnimate: downanimation.export(),
+      sortShow: false
+    })
+  },
+  BindSearch(e) { //排序选择事件
+    let sort = {};
+    let sortindex = e.target.dataset.sortindex;
+    let sortname = e.target.dataset.sortname;
+    let search = this.data.searchobj;
+    let sortres = this.data.sortList;
+    let sortordername = this.data.sortordername
+    sort.sortColumn = e.target.dataset.type;
+    sort.sortOrder = e.target.dataset.sort;
+    search.sortList = [];
+    search.sortList.push(sort);
+    search.pageNum = 0;
+    if (sortres[sortindex].sortorder == 'desc') {
+      sortres[sortindex].sortorder = 'asc';
+      sortordername = sortname + '倒序';
+    } else {
+      sortres[sortindex].sortorder = 'desc';
+      sortordername = sortname + '正序';
+    }
+    if (e.target.dataset.type == 'clearSort') {
+      sortordername = '排序';
+      search.sortList = [];
+    }
+    this.setData({
+      sortlistshow: false,
+      sortList: sortres,
+      searchobj: search,
+      refresh: true,
+      prolist: [],
+      sortordername: sortordername
+    });
+    this.endSort();
+    this.resFunc();
+  },
+  chooseType: function(e) { //产品分类选择事件
+    this.setData({
+      tabindex: e.target.dataset.typeid,
+      tabtx: e.target.dataset.typetx,
+    });
+    var search = this.data.searchobj;
+    search.prodTypeIdList = [];
+    if (this.data.tabindex !== 'all' && this.data.tabindex !== 'buyed') {
+      search.prodTypeIdList.push(this.data.tabindex);
+    }
+    if (this.data.tabindex == 'buyed') {
+      search.buyFlag = true
+    } else {
+      delete search.buyFlag
+    }
+    search.pageNum = 0;
+    search.mobileSearch = this.data.searchcontent;
+    this.setData({
+      searchobj: search,
+      prolist: [],
+      refresh: true
+    });
+    this.resFunc();
+  },
+  fillInput: function(e) { //获取模糊搜索内容
+    this.setData({
+      searchcontent: e.detail.value
+    });
+  },
+  clearInput: function() { //情况模糊搜索内容
+    this.setData({
+      searchcontent: ''
+    })
+  },
+  mobileSearch: function() { //模糊搜索事件
+    var search = this.data.searchobj;
+    search.pageNum = 0;
+    search.mobileSearch = this.data.searchcontent;
+    this.setData({
+      searchobj: search,
+      prolist: [],
+      refresh: true
+    });
+    this.resFunc();
+  },
+  showshop: function() {
+    this.setData({
+      shopmodal: false
+    })
+  },
+  closeintro: function() {
+    this.setData({
+      shopmodal: true
+    })
+  },
+  toTel: function(e) {
+    if (e.target.dataset.telbtn.length > 0) {
+      wx.makePhoneCall({
+        phoneNumber: e.target.dataset.telbtn[0]
+      })
+    }
+  },
+  selectPrice: function() {
+
+  },
+  toprodetail: function(e) {
+    wx.setStorageSync('refresh', true);
+    let id = e.currentTarget.dataset.id
+    wx.navigateTo({
+      url: '/pages/productdetail/productdetail?id=' + id
+    })
+  },
+  //查询产品信息接口
+  resFunc: function() {
+    let that = this;
+    let prolist = that.data.prolist;
+    app.HttpService.prolist(that.data.searchobj).then(res => {
+      let p = getApp().P();
+      that.resSaler();
+      if (that.data.openlimit){
+        that.limitFunc();
+      }
+      let data = res.list
+      for (let i = 0; i < data.length; i++) {
+        if (data[i].photo) {
+          data[i].imgsrc = app.getxsimg('thumbnail', data[i].photo)
+        } else {
+          data[i].imgsrc = '/images/buy/defaultpro.png'
+        }
+        //开启多单位没有开启多价位
+        if (p.unitFlag && !p.morePriceFlag) {
+          let s1 = data[i].prodDimUnitVOList;
+          if (!s1) { //当后台不返回prodDimUnitVOList时
+            continue
+          }
+          data[i].indexnum = 0;
+          if (s1.length > 1) {
+            data[i].cornerhidden = false;
+          } else {
+            data[i].cornerhidden = true;
+          }
+          for (let j = 0; j < s1.length; j++) {
+            if (s1[j].salePrice || s1[j].salePrice == 0) {
+              data[i].showmoney = true;
+              s1[j].pickerdata = s1[j].name + ':￥' + s1[j].salePrice
+            } else {
+              data[i].showmoney = false;
+            }
+
+          }
+          data[i].customprolist = data[i].prodDimUnitVOList;
+        }
+
+        //同时开启多价位、多单位，只显示多价位  或者  开启多价位没有开启多单位
+        if ((p.unitFlag && p.morePriceFlag) || (!p.unitFlag && p.morePriceFlag)) {
+          let s2 = data[i].prodMultiPriceVOList;
+          if (!s2) { //当后台不返回prodMultiPriceVOList
+            continue
+          }
+          data[i].indexnum = 0;
+          if (s2.length == 0) {
+            data[i].showmoney = false;
+            continue;
+          }
+          data[i].showmoney = true;
+          if (s2.length > 1) {
+            data[i].cornerhidden = false;
+          } else {
+            data[i].cornerhidden = true;
+          }
+          for (let j = 0; j < s2.length; j++) {
+            s2[j].salePrice = s2[j].price
+            s2[j].pickerdata = s2[j].showName + ':￥' + s2[j].price
+          }
+          data[i].customprolist = data[i].prodMultiPriceVOList;
+        }
+        //没有开启多价位、多单位
+        if (!p.unitFlag && !p.morePriceFlag) {
+          let s3 = data[i].prodMultiPriceVOList;
+          if (!s3) { //当后台不返回prodMultiPriceVOList
+            continue
+          }
+          if (s3.length == 0) {
+            data[i].showmoney = false;
+            continue;
+          }
+          data[i].showmoney = true;
+          data[i].cornerhidden = true;
+          for (let j = 0; j < s3.length; j++) {
+            s3[j].salePrice = s3[j].price
+          }
+          data[i].customprolist = data[i].prodMultiPriceVOList;
+        }
+      }
+      prolist = prolist.concat(data)
+      console.log(prolist)
+      console.log(data)
+      that.setData({
+        p: p,
+        prolist: prolist,
+        prolisttotal: res.total
+      })
+      console.log(this.data.prolist)
+      if (that.data.prolisttotal == prolist.length) {
+        that.setData({
+          refresh: false
+        })
+      }
+    }).catch(error => {
+      console.log(error)
+      // wx.showToast({ 'title': error, icon:'none'})
+    })
+  },
+  //查询产品分类接口
+  resClassify() {
+    let param = {
+      'pageNum': 0,
+      'pageSize': 10000,
+      'canShopDisplay': true,
+      'showDefaultType': true
+    };
+    app.HttpService.proclassify(param).then(res => {
+      let p = getApp().P();
+      //如果没有打开分类的权限，则不执行
+      let classify = {};
+      let classarr = [{
+          id: 'all',
+          name: '全部'
+        },
+        {
+          id: 'buyed',
+          name: '买过'
+        }
+      ];
+      if (!p.viewProductClassify || !p.productTypeFlag) {
+        this.setData({
+          classifylist: classarr
+        })
+      } else {
+        res.list.forEach((vv, ii) => {
+          if (vv.createBy == "system") {
+            classify = vv;
+          } else {
+            classarr.push(vv);
+          }
+        })
+        if (Object.keys(classify).length !== 0) {
+          classarr.push(classify);
+        }
+        this.setData({
+          classifylist: classarr
+        })
+      }
+    }).catch(error => {
+      console.log(error)
+      // wx.showToast({ 'title': error, icon:'none'})
+    });
+  },
+  //查询商户信息接口
+  resSaler() {
+    let salerinfo = wx.getStorageSync('owner').cloudShopVO;
+    let salermodal = [];
+    let salerobj = {};
+    let salerlogo = salerinfo.logoId ? app.getxsimg('original', salerinfo.logoId) : '/images/buy/defaultshop.png';
+    let des = salerinfo.description ? salerinfo.description : '暂无该店介绍哦'
+    salerobj.salername = salerinfo.legalPerson;
+    salerobj.salershopname = salerinfo.name;
+    salerobj.salertel = salerinfo.contactNo;
+    let reg = /^[0-9]+-*[0-9]+-*[0-9]+/
+    salerobj.salercalltel = salerinfo.contactNo.match(reg);
+    if (salerinfo.addressVOs.length > 0) {
+      salerobj.address = salerinfo.addressVOs[0].fullAddress
+    }
+    salermodal.push(salerobj)
+    this.setData({
+      salermodal: salermodal,
+      salerlogo: salerlogo,
+      salerdes: des
+    });
+    wx.setNavigationBarTitle({
+      title: salerinfo.name
+    })
+  },
+  //权限部分
+  limitFunc() {
+    let cloudlimit = getApp().P();
+    //placeholder提示语权限
+    if (cloudlimit.skuFlag && cloudlimit.viewProductSku) {
+      this.setData({
+        placeholder1: '、货号'
+      })
+    }
+    if (cloudlimit.viewProductBarcode) {
+      this.setData({
+        placeholder2: '、条形码'
+      })
+    }
+    if (cloudlimit.viewProductLabel) {
+      this.setData({
+        placeholder3: '、标签'
+      })
+    }
+    //排序的货号、条形码的权限
+    let sortList = this.data.sortList;
+      if (!cloudlimit.viewProductSku || !cloudlimit.skuFlag){
+        sortList.splice(1, 1);
+        if (!cloudlimit.viewProductBarcode){
+          sortList.splice(1, 1);
+        }
+      }
+    if (!cloudlimit.viewProductBarcode){
+      sortList.splice(2, 1);
+    }
+    this.setData({
+      sortList: sortList,
+      openlimit:false
+    })
+  },
+  //选择价格
+  bindtypePickerChange(e) {
+    let i = e.target.dataset.noindex;
+    let prolist = this.data.prolist;
+    prolist[i].indexnum = e.detail.value
+    this.setData({
+      prolist: prolist
+    })
+  },
+  scrollbottom: function() {
+    if (this.data.refresh) {
+      var search = this.data.searchobj;
+      search.pageNum++;
+      this.setData({
+        searchobj: search
+      });
+      console.log('数据结束依旧请求数据')
+      this.resFunc();
+    }
+  },
+  showimgBig(event) {
+    openimg = true
+    AcFunc.imgBig(event)
+  },
+  //下拉刷新
+  onPullDownRefresh() {
+    let sortList = this.data.sortList
+    for (let a = 0; a < sortList.length; a++) {
+      sortList[a].sortorder = 'asc'
+    }
+    if (this.data.sortShow) {
+      this.endSort()
+    }
+    this.setData({
+      sortList: sortList,
+      searchcontent: '',
+      tabindex: 'all',
+      prolist: [],
+      prolisttotal: 0,
+      tabtx: '全部',
+      sortordername: '排序',
+      searchobj: {
+        pageSize: 10,
+        pageNum: 0,
+        prodTypeIdList: []
+      },
+      refresh: true
+    })
+    this.resClassify();
+    this.resFunc();
+    setTimeout(function(){
+      wx.stopPullDownRefresh();
+    },500)
+  },
+  emptyfunc() {
+    //此函数为空函数，用于防止事件toprodetail触发bindtypePickerChange
+  }
+}),{
+  "enablePullDownRefresh":true
+},<view class='flex f-col flexone'>
+  <view class='shopMsg flex content-center'>
+    <view class='shopImg'>
+      <image src='{{salerlogo}}' mode='aspectFit'></image>
+    </view>
+    <view class='shopText flex-1 self-center clamp clamp-3' bindtap='showshop'>简介:{{salerdes}}</view>
+    <view></view>
+  </view>
+  <view class='linecolor'></view>
+  <view class='topsearch clearfix'>
+    <view class='searchinput flex nowrap just-con-c item-top'>
+      <icon type="search" size="16" class='searchicon' />
+      <input class='searchinput' placeholder='输入产品名称{{placeholder1}}{{placeholder2}}{{placeholder3}}查找' placeholder-class="phcolor" value='{{searchcontent}}' bindinput='fillInput'></input>
+      <icon type="cancel" size="18" color='#8F8E94' class='cancelicon' wx:if="{{searchcontent}}" bindtap='clearInput' />
+    </view>
+    <view class='searchbtn' bindtap='mobileSearch'>搜索</view>
+  </view>
+  <view class='clearfix con'>
+    <view class='leftlist'>
+      <scroll-view scroll-y='true' class='classifyheight'>
+        <view wx:for="{{classifylist}}" wx:for-item="classifylistitem" wx:for-index="classifylistindex" wx:key="" bindtap='chooseType'>
+          <view class="{{tabindex== classifylistitem.id ? 'leftlistdetai checktype overpoint' : 'leftlistdetai overpoint'}}" data-typeid='{{classifylistitem.id}}' data-typetx='{{classifylistitem.name}}'>
+            {{classifylistitem.name}}
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+    <view class='rightlist'>
+      <view class='ordersearch flex row nowrap just-con-b'>
+        <view class='proclassify'>
+          <text>{{tabtx}}</text>
+          <text class='tenorder' wx:if="{{tabindex=='buyed'}}">(显示最近10单)</text>
+        </view>
+        <view class='flex row nowrap'>
+          <view bindtap='bindSort'>
+            <text class='bluecolor'>{{sortordername}}</text>
+            <image src='../../images/buy/todown.png' class='downimg' animation="{{downAnimate}}"></image>
+          </view>
+        </view>
+      </view>
+      <scroll-view class='scrollview' scroll-y="true" bindscrolltolower="scrollbottom">
+        <view class='orderdetaillist flex f-row nowrap' wx:for="{{prolist}}" wx:key="" catchtap='toprodetail' data-id='{{item.id}}'>
+          <view class='proimg' wx:if="{{(p['imgFlag']&&p['viewProductPhoto'])}}">
+            <image mode='widthFix' src='{{item.imgsrc}}' lazy-load="true" catchtap='showimgBig' data-src='{{item.imgsrc}}'></image>
+          </view>
+          <view class='prodetail'>
+            <view class='protitle'>{{item.name}}</view>
+            <view class='flex f-row f-wrap'>
+              <view class='prolabel' wx:for="{{item.labelList}}" wx:key="">{{item}}</view>
+            </view>
+            <view class='flex f-row nowrap just-con-b'>
+              <view>
+                <view class='proprice flex' wx:if="{{item.showmoney}}">
+                  <picker catchtap="emptyfunc" bindchange="bindtypePickerChange" data-noindex='{{index}}' value="{{item.indexnum}}" range-key="pickerdata" range="{{item.customprolist}}">
+                    <view class='flex'>
+                      <view class="picker" hidden='{{item.cornerhidden}}'>￥{{item.customprolist[item.indexnum].salePrice}}</view>
+                      <view hidden='{{item.cornerhidden}}' class='downcorner'></view>
+                    </view>
+                  </picker>
+                  <view hidden='{{!item.cornerhidden}}'>￥{{item.customprolist[indexnum].salePrice}}</view>
+                </view>
+              </view>
+              <view class='topro self-bottom'>
+                <image src='/images/buy/bluebtn.png' wx:if="{{!item.existCart}}"></image>
+                <image src='/images/buy/yellowbtn.png' wx:if="{{item.existCart}}"></image>
+              </view>
+            </view>
+            <view class='pronum'>
+              <view>
+                <text wx:if="{{p['viewProductSku']&&p['skuFlag']}}">货号：{{item.sku}}</text>
+                <text wx:if="{{(p['viewProductSku']&&p['skuFlag'])&&(p['viewProductBarcode'])}}">|</text>
+                <text wx:if="{{p['viewProductBarcode']}}">条形码：{{item.barcode}}</text>
+              </view>
+            </view>
+            <view class='proremark' wx:if="{{p['viewProductRemark']}}">备注:{{item.remark}}</view>
+          </view>
+        </view>
+        <view style='height:84rpx;'></view>
+      </scroll-view>
+    </view>
+  </view>
+</view>
+<view class='shopintroduce' hidden='{{shopmodal}}' bindtap='closeintro'></view>
+<view class='shopview' hidden='{{shopmodal}}' wx:for="{{salermodal}}" wx:key="">
+  <view class='shopblue'>
+    <icon type="cancel" size="20" color="#fff" bindtap='closeintro' />
+  </view>
+  <view class='shopwhite'>
+    <view>
+      <image src='{{salerlogo}}' class='shopimage'></image>
+    </view>
+    <view class='shopname overpoint'>{{item.salershopname}}</view>
+    <view class='shopline flex row nowrap'>
+      <view>
+        <image src='/images/buy/salename.png' class='shopicon'></image>
+      </view>
+      <view>
+        <text>{{item.salername}}</text>
+      </view>
+    </view>
+    <view class='shopline flex row nowrap'>
+      <view>
+        <image src='/images/buy/saletel.png' class='shopicon'></image>
+      </view>
+      <view class='shopphone'>
+        <text data-telbtn='{{item.salercalltel}}' bindtap='toTel'>{{item.salertel}}</text>
+      </view>
+    </view>
+    <view class='shopline flex row nowrap'>
+      <view>
+        <image src='/images/buy/saleloca.png' class='shopicon'></image>
+      </view>
+      <view class='shopaddress'>
+        <text>{{item.address}}</text>
+      </view>
+    </view>
+    <view class='shopintro'>简介：{{salerdes}}</view>
+  </view>
+</view>
+<view class="sortMod flex f-col" wx:if="{{sortlistshow}}">
+  <view class='sortList'>
+    <view wx:for="{{sortList}}" hover-class='touch' wx:key="" bindtap='BindSearch' data-type='{{item.sorttype}}' data-sort='{{item.sortorder}}' wx:for-index='sortindex' data-sortindex='{{sortindex}}' data-sortname='{{item.name}}'>
+      {{item.name}}
+    </view>
+  </view>
+  <view bindtap='endSort' class='flex-1'></view>
+</view>,page{
+  background: #EFEFF4;
+  height:100%;
+  overflow: hidden;
+}
+page > .flexone{
+  height:100%;
+  /* padding-top:252rpx; */
+}
+page .con{
+  height:calc(100% - 256rpx);
+  /* position: fixed;
+  left: 0;
+  top:256; */
+}
+page .con .leftlist{
+  height:100%;
+  width: 160rpx;
+  float:left;
+  overflow: hidden;
+}
+.rightlist{
+  height:100%;
+  float: right;
+  width: 590rpx;
+  background: #fff;
+  overflow: hidden;
+}
+.scrollview{
+  height:100%;
+}
+.shopMsg{
+  padding:20rpx;
+  background: #00a6f5;
+  /* position: fixed;
+  left: 0;
+  top:0;
+  z-index: 9999; */
+}
+.shopImg image{
+  width: 100rpx;
+  height:100rpx;
+}
+.shopText{
+  width: 610rpx;
+  font-size:24rpx;
+  padding-left:20rpx;
+  box-sizing: border-box;
+  color:#fff;
+}
+.linecolor{
+  width: 750rpx;
+  height: 10rpx;
+  background: #EFEFF4;
+  /* position: fixed;
+  left: 0;
+  top:140rpx;
+  z-index: 9999; */
+}
+/* 复制来的 */
+.searchinput{
+  background: #EFEFF4;
+  width: 640rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  float: left;
+  border-radius: 41rpx;
+}
+.searchinput input{
+    padding: 0 20rpx;
+    box-sizing: border-box;
+    font-size: 24rpx;
+    text-align: left;
+}
+.searchinput icon{
+  display: block;
+}
+icon.searchicon{
+  margin:12rpx 0 0 16rpx;
+}
+icon.cancelicon{
+  margin:10rpx 16rpx 0 0;
+}
+.phcolor{
+  font-size: 24rpx;
+  color: #c8c8c8;
+}
+.searchbtn{
+  float: right;
+  font-size: 24rpx;
+  color: #00a6f5;
+  line-height: 56rpx;
+}
+.topsearch{
+  width: 750rpx;
+  background: #fff;
+  padding: 24rpx 16rpx 24rpx 24rpx;
+  box-sizing: border-box;
+  /* position: fixed;
+  top:150rpx;
+  left: 0;
+  z-index: 10; */
+  border-bottom: 2rpx solid #EFEFF4;
+}
+.checktype{
+  background: #fff;
+  color: #00A6F5;
+}
+
+.ordersearch{
+  width: 100%;
+  background: #fff;
+  height: 84rpx;
+  line-height: 84rpx;
+  padding: 0 16rpx;
+  box-sizing: border-box;
+  border-bottom: 1px solid #EFEFF4;
+}
+
+.ordersearch text{
+  font-size: 24rpx;
+}
+.leftlistdetai{
+  padding: 0 6rpx;
+  box-sizing: border-box;
+  height: 100rpx;
+  line-height: 100rpx;
+  font-size: 22rpx;
+  text-align: center;
+  border-bottom: 1px solid #E9E9F1;
+}
+.rightlistdetai{
+  padding: 16px 18px;
+  box-sizing: border-box;
+  border-bottom: 1px solid #EFEFF4;
+}
+.name{
+  font-size: 30rpx;
+  color: #333;
+}
+.tel{
+  font-size: 26rpx;
+  color: #666;
+}
+.orderdetaillist{
+  background: #fff;
+  padding: 14rpx 14rpx 10rpx 10rpx;
+  box-sizing: border-box;
+  border-bottom: 2rpx solid #EFEFF4;
+}
+.downimg{
+  width: 22rpx;
+  height: 14rpx;
+  margin:0 8rpx;
+}
+.tenorder{
+  color: #999999;
+}
+.bluecolor{
+  color: #00a6f5;
+}
+.proclassify{
+  width: 220rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.prodetail{
+  width: 100%;
+}
+.proimg{
+  align-items:center;
+  display: -webkit-flex;
+}
+.proimg image{
+  width: 130rpx;
+  height: 130rpx;
+  margin-right: 10rpx;
+  border-radius: 8rpx;
+}
+.protitle{
+  font-size: 26rpx;
+  color:#333;
+  word-break:break-all;
+}
+.prolabel{
+  padding: 0 18rpx;
+  font-size: 18rpx;
+  box-sizing: border-box;
+  background: #FEEBE9;
+  color: #FE3824;
+  height: 28rpx;
+  line-height: 28rpx;
+  border-radius: 14rpx;
+  margin:6rpx 14rpx 6rpx 0;
+}
+.proprice{
+  line-height: 60rpx;
+  font-size: 26rpx;
+  color: #FE3824;
+  font-weight: 700;
+}
+.downcorner{
+  width:0;
+  height:0;
+  border:12rpx solid #999;
+  border-bottom-color:transparent;
+  border-right-color:transparent;
+  border-left-color:transparent;
+  margin:26rpx 0 0 10rpx;
+}
+.pronum view{
+  word-break:break-all;
+  line-height: 20rpx;
+  margin-bottom: 10rpx;
+}
+.pronum view text{
+  font-size: 18rpx;
+  color: #666;
+}
+.proremark{
+  width: 400rpx;
+  font-size: 18rpx;
+  color: #666;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.shopintroduce{
+  width: 750rpx;
+  background: #000;
+  opacity: 0.3;
+  z-index: 9999;
+  height: 100%;
+  position: fixed;
+  left: 0;
+  top: 0;
+}
+.shopview{
+  width: 588rpx;
+  position: fixed;
+  top:206rpx;
+  left:80rpx;
+  z-index: 99999;
+  border-radius: 4rpx;
+}
+.shopblue{
+  width: 588rpx;
+  height: 166rpx;
+  background: #00A6F5;
+  border-top-left-radius: 8rpx;
+  border-top-right-radius: 8rpx;
+}
+.shopblue icon{
+  position: absolute;
+  right: 10rpx;
+  top:10rpx;
+}
+.shopwhite{
+  background: #fff;
+  position: relative;
+  padding: 0 20rpx 52rpx 20rpx;
+  box-sizing: border-box;
+  border-bottom-left-radius: 8rpx;
+  border-bottom-right-radius: 8rpx;
+}
+.shopimage{
+  width: 176rpx;
+  height: 176rpx;
+  border-radius: 88rpx;
+  border:10rpx solid #fff;
+  position: absolute;
+  top: -134rpx;
+  left:196rpx; 
+}
+.shopname{
+  font-size: 32rpx;
+  color: #333;
+  padding: 70rpx 0 30rpx;
+  font-weight: 700;
+  text-align: center;
+}
+.shopicon{
+  width: 44rpx;
+  height: 44rpx;
+  vertical-align: middle;
+  margin-right: 10rpx;
+}
+.shopline{
+  margin-bottom: 20rpx;
+}
+.shopline text,.shopintro{
+  font-size: 24rpx;
+  color: #666;
+}
+.shopintro{
+  height: 200rpx;
+  overflow-x: hidden;
+  overflow-y: scroll;
+}
+.shopphone text,.shopaddress text{
+  word-break:break-all;
+}
+.topro image{
+  width: 60rpx;
+  height: 60rpx;
+}
+.classifyheight{
+    height:100%;
+}
+.sortMod{
+  position: fixed;
+  left: 160rpx;
+  width: 590rpx;
+  top:340rpx;
+  height:calc(100% - 340rpx);
+  background: rgba(0,0,0,0.3);
+  z-index: 50;
+}
+.sortList{
+  background: #fff;
+  font-size:24rpx;
+}
+.sortList view{
+  padding:20rpx;
+  color:#393939;
+  border-bottom:1px solid #f2f2f2;
+}
+.sortList .touch{
+  background: #f6f6f6;
+},let app = getApp();
+Page({
+  /**
+   * 页面的初始数据
+   */
+  data: {
+  },
+
+  /**
+   * 生命周期函数--监听页面加载
+   */
+  onLoad: function(options) {
+    let {
+      shopCode
+    } = options;
+    console.log('action onLoad options is：', options)
+    app.HttpService.notokenGetUser(shopCode).then(res => {
+      console.log('notokenGetUser', res)
+      let {
+        shareUrl,
+        logoId,
+        name,
+        contactNo
+      } = res;
+      let ownerId = app.AcFunc.getUrlParams(shareUrl).ownerId;
+      let src = '/images/buy/defaultshop.png'
+      if (logoId) {
+        src = app.__config.basePath + `/sys/common/file/original/${logoId}/${ownerId}/xs/get`;
+      }
+      this.setData({
+        name: name,
+        src: src,
+        contactNo: contactNo,
+      })
+    })
+  },
+  onShow: function(options) {
+    console.log('action onShow options is：', options)
+  },
+  onUnload: function() {
+    app.canget = null;
+  },
+  gettel: function() {
+    let tel = this.data.contactNo
+    if (!tel) {
+      app.AcFunc.myTotal('商家真懒，没有留下联系方式', 'none')
+
+    } else {
+      let reg = /^[0-9]+-*[0-9]+-*[0-9]+/
+      tel = tel.match(reg).toString();
+      wx.makePhoneCall({
+        phoneNumber: tel
+      })
+    }
+
+  },
+  toshopList: function() {
+    if (wx.getStorageSync('access_token')){
+      wx.redirectTo({
+        url: '/pages/myhome/browseshop/browseshop',
+      })
+    }else{
+      // wx.navigateBack()
+      wx.reLaunch({
+        url: '/pages/login/index',
+      })
+    }
+  }
+}),{"navigationBarTitleText": "秒账云店"},<view class='container'>
+<view class='logo'>
+<image src='/images/buy/defaultshop.png' mode='widthFix'></image>
+</view>
+<view class='shopName fs15'>{{name}}</view>
+<view class='shopMsg fs13'>抱歉,{{name}}秒账云店功能已经关闭不可以访问了</view>
+<view class='shopBtn'>
+<button type='success' bindtap='gettel'>联系卖家</button>
+<button type='blue' bindtap='toshopList'>换个店铺</button>
+</view>
+</view>
+,/* pages/action/index.wxss */
+page{
+  background: #fff;
+}
+.container{
+  padding:0 30rpx;
+  text-align: center;
+}
+.logo{
+  padding:60rpx 0 30rpx;
+}
+image{
+  width: 160rpx;
+  height:160rpx;
+  border-radius: 160rpx;
+  border:1px solid #979797;
+}
+.shopMsg{
+  padding:60rpx 0;
+}
+.shopBtn button{
+  margin-bottom: 40rpx;
+},Page({
+  data: {
+    //判断小程序的API，回调，参数，组件等是否在当前版本可用。
+    canIUse: wx.canIUse('button.open-type.getUserInfo')
+  },
+  onLoad: function () {
+    var that = this;
+    // 查看是否授权
+    wx.getSetting({
+      success: function (res) {
+        if (res.authSetting['scope.userInfo']) {
+          wx.getUserInfo({
+            success: function (res) {
+              //从数据库获取用户信息
+              //用户已经授权过
+              wx.switchTab({
+                url: '/pages/index/index'
+              })
+            }
+          });
+        }
+      }
+    })
+  },
+  bindGetUserInfo: function (e) {
+    if (e.detail.userInfo) {
+      //用户按了允许授权按钮
+      var that = this;
+      //插入登录的用户的相关信息到数据库
+     
+      //授权成功后，跳转进入小程序首页
+      wx.switchTab({
+        url: ''
+      })
+    } else {
+      //用户按了拒绝按钮
+      wx.showModal({
+        title: '警告',
+        content: '您点击了拒绝授权，将无法进入小程序，请授权之后再进入!!!',
+        showCancel: false,
+        confirmText: '返回授权',
+        success: function (res) {
+          if (res.confirm) {
+            console.log('用户点击了“返回授权”')
+          }
+        }
+      })
+    }
+  },
+  //获取用户信息接口
+  queryUsreInfo: function () {
+    wx.request({
+      url: getApp().globalData.urlPath + 'hstc_interface/queryByOpenid',
+      data: {
+        openid: getApp().globalData.openid
+      },
+      header: {
+        'content-type': 'application/json'
+      },
+      success: function (res) {
+        console.log(res.data);
+        getApp().globalData.userInfo = res.data;
+      }
+    })
+  },
+
+}),{
+  "navigationBarTitleText": "授权登录"
+},<view wx:if="{{canIUse}}">
+    <view class='header'>
+        <image src='/images/chatLogo.png' mode='aspectFit'></image>
+    </view>
+ 
+    <view class='content'>
+        <view>申请获取以下权限</view>
+        <text>获得你的公开信息(昵称，头像等)</text>
+    </view>
+ 
+    <button class='bottom' type='primary' open-type="getUserInfo" lang="zh_CN" bindgetuserinfo="bindGetUserInfo">
+        授权登录
+    </button>
+</view>
+ 
+<view wx:else>请升级微信版本</view>
+,.header {
+    margin: 90rpx 0;
+    border-bottom: 1px solid #ccc;
+    text-align: center;
+    width: 100%;
+    height: 300rpx;
+    line-height: 360rpx;
+}
+ 
+.header image {
+    width: 160rpx;
+    height: 160rpx;
+}
+ 
+.content {
+    margin-left: 50rpx;
+    margin-bottom: 90rpx;
+}
+ 
+.content text {
+    display: block;
+    color: #9d9d9d;
+    margin-top: 40rpx;
+}
+ 
+.bottom {
+    border-radius: 80rpx;
+    margin: 70rpx 50rpx;
+    font-size: 35rpx;
+},// pages/login/index.js
+let app=getApp();
+Page({
+
+  /**
+   * 页面的初始数据
+   */
+  data: {
+    oaCanIUse: wx.canIUse('official-account'),
+    validcode_placeholder:'获取验证码',
+    validcodeCanTap:true,
+    count:1,
+    metaArray:[],
+    orderType:null,
+    orderId:null,
+    query:null
+  },
+
+  /**
+   * 生命周期函数--监听页面加载
+   */
+  onLoad: function (query={}) {
+    let { action, code, id, q, ownerId } = query
+    this.shareUrl = app.AcFunc.objToUrl(query);
+      if(code){
+        app.HttpService.notokenGetUser(code).then(res=>{
+          console.log('notokenGetUser',res)
+          this.setData({
+            yd_name:res.name,
+            src: app.__config.basePath + `/sys/common/file/original/${res.logoId}/${ownerId}/xs/get`
+          })
+        })
+      }
+
+    //校验初始化，传入校验字段和规则
+    this.WxValidate = app.WxValidate({
+      phone:{
+        required: true,
+        tel: true, 
+      },
+    },{
+        phone:{
+          required: '电话号码不能为空', 
+        },
+    })
+    //校验初始化，传入校验字段和规则
+    this.WxValidate_login = app.WxValidate({
+      mobile: {
+        required: true,
+        tel: true,
+      },
+      verifyCode: {
+        required: true,
+      },
+      shopCode: {
+        required: true,
+      },
+    }, {
+        mobile: {
+          required: '电话号码不能为空',
+        },
+        shopCode: {
+          required: '店铺ID不能为空',
+        },
+        verifyCode: {
+          required: '验证码不能为空',
+        },
+      })
+    this.setData({
+      shopid: code,
+      action: action,
+      query: query,
+      id:id,
+    });
+    console.log('login query:', query,this.data)
+  },
+
+  phoneinput(e) {
+    this.setData({
+      phone: e.detail.value,
+    })
+  },
+  getValidcodeMsg(e) {
+    if (this.data.validcodeCanTap) {
+      if (!this.WxValidate.checkObj({ phone: this.data.phone })) {
+        const error = this.WxValidate.errorList[0]
+        wx.showModal({
+          title: '提示',
+          content: `${error.msg}`,
+          showCancel: !1,
+        })
+        return false
+      }
+      app._getCode().then((res)=>{
+       return app.HttpService.getValidcodeMsg({
+          count: this.data.count++,
+          phone: this.data.phone,
+          areacode: '86',
+          code: res,
+       }).then(res => {
+         let s = 60;
+         this.setData({
+           validcodeCanTap: false,
+           validcode_placeholder: s + 's',
+         })
+         let siv = setInterval(() => {
+           this.setData({
+             validcode_placeholder: --s + 's',
+           })
+           if (s == 0) {
+             this.setData({
+               validcode_placeholder: '重新获取',
+               validcodeCanTap: true
+             })
+             clearInterval(siv)
+           }
+         }, 1000)
+       }).catch((e)=>{
+          console.error('getValidcodeMsg',e);
+          wx.showToast({ 'title': e, icon: 'none' })
+        })
+      }).catch((e) => {
+          wx.showToast({ 'title': e, icon: 'none' })
+      })
+    }
+  },
+
+  login(e) {
+    let query = this.data.query
+    let that=this
+    if (!this.WxValidate_login.checkObj(e.detail.value)) {
+      const error = this.WxValidate_login.errorList[0]
+      wx.showModal({
+        title: '提示',
+        content: `${error.msg}`,
+        showCancel: !1,
+      })
+      return false
+    }
+    // let value = e.detail.value
+    // value.mobile='13333333333'
+    // value.verifyCode = '1234'
+    // value.shopCode = '9h7tb'
+    app._getCode().then(()=>{
+      app.HttpService.getTokenByPhone(Object.assign({ weixinCode: wx.getStorageSync('code'), shareUrl: that.shareUrl }, e.detail.value)).then(res => {
+        app._setUser(res).then(res=>{
+          if (query.action && query.action != 'viewCloudShop') {
+            app.queryFunc(query, true)
+            // if (orderType == 'viewSaleOrder') {
+            //   wx.redirectTo({
+            //     url: '/pages/order/orderDetail/orderDetail?id=' + that.orderId,
+            //   })
+            // } else {
+            //   wx.redirectTo({
+            //     url: '/pages/order/logistDetail/logistDetail?id=' + that.orderId,
+            //   })
+            // }
+          } else {
+            if (!app.isNotAction) {
+              app.isNotAction = true;
+              wx.navigateBack();
+            } else {
+              wx.switchTab({
+                url: '/pages/index/index',
+              })
+            }
+          }
+        }).catch(e=>{
+          if(e=='clear'){
+            this.setData({
+              shopid:''
+            })
+          }
+        })
+      }).catch(e => {
+        console.error(e);
+        // app.WxService.showModal({ showCancel: false, content: e })
+      })
+    }).catch(e => {
+      console.error(e);
+      app.WxService.showModal({ showCancel: false, content: e })
+    })
+    console.log(e)
+  },
+
+  /**
+   * 生命周期函数--监听页面初次渲染完成
+   */
+  onReady: function (options) {
+// var t=wx;
+  },
+
+  /**
+   * 生命周期函数--监听页面显示
+   */
+  onShow: function (options) {
+    
+    // var context = wx.createCanvasContext('cvs');
+    // wx.getImageInfo({
+    //   src: 'http://localhost/images/common/magnify/smallProgram.png',
+    //   success:function(res){        
+    //     context.drawImage(res.path, 0, 0, 200, 200)
+    //     wx.getImageInfo({
+    //       src: 'http://localhost/images/common/logo.png',
+    //       success: function (res) {
+    //         context.setFillStyle('#fff')
+    //         context.fillRect(80, 80, 40, 40)
+    //         context.drawImage(res.path,80, 80, 40, 40)
+    //         context.draw(true)
+    //        }
+    //     })   
+      
+    //     context.setTextAlign('center')    // 文字居中
+    //     context.setFillStyle('#000000')  // 文字颜色：黑色
+    //     context.setFontSize(22)         // 文字字号：22px
+    //     context.fillText('Object有限公司', 100, 215)
+    //     context.draw()
+    //   }
+    // })
+
+
+    // var cvs = document.createElement('canvas');
+    // cvs.width=200;
+    // cvs.height=220;
+    // var context = cvs.getContext('2d')
+    // context.textAlign = 'center'  // 文字居中
+    // context.fillStyle = '#000000'// 文字颜色：黑色
+    // context.fontSize=22       // 文字字号：22px
+    // context.fillText('Object有限公司', 100, 215)
+    // context.drawImage(edituserSetCloud_QRcode, 0, 0, 200, 200)
+    // edituserSetCloud_QRcode.replaceWith(cvs)
+  },
+
+  /**
+   * 生命周期函数--监听页面隐藏
+   */
+  onHide: function () {
+
+  },
+
+  /**
+   * 生命周期函数--监听页面卸载
+   */
+  onUnload: function () {
+    app.isNotAction = true;
+  },
+
+  /**
+   * 页面相关事件处理函数--监听用户下拉动作
+   */
+  onPullDownRefresh: function () {
+
+  },
+
+  /**
+   * 页面上拉触底事件的处理函数
+   */
+  onReachBottom: function () {
+
+  },
+
+  /**
+   * 用户点击右上角分享
+   */
+  onShareAppMessage: function () {
+
+  },
+
+  oaLoad(e){
+    console.log('oaLoad:',e)
+  },
+
+  oaError(e) {
+    console.error('oaError:', e)
+  },
+  
+
+}),{
+  "usingComponents": {
+    "lazyRoll": "/assets/components/lazyRoll/index"
+  }},<form bindsubmit='login'>
+<!-- <canvas canvas-id="cvs" style="width: 200px; height: 220px;border: 1px solid black;"></canvas> -->
+<view class="page">
+  <view wx:if="{{shopid}}" class="shoplogo">
+    <image src="{{src}}" class='shoplogoimg' mode='aspectFit'></image>   
+    <view class='shoplogoname'>{{yd_name}}</view> 
+  </view>
+  <view wx:else class="logo">
+    <image src='/images/login/logo.png' class='logoimg' mode='aspectFit'></image>
+  </view>
+
+  <view class='form'>
+    <view class="weui-cell weui-cell_input login_first_input">
+      <view class="weui-cell__hd">
+        <image src='/images/login/mytel.png' class='phone'></image>
+      </view>
+      <view class="weui-cell__bd">
+        <input class="weui-input" type='number' name="mobile" bindinput='phoneinput' value='{{phone}}' placeholder="请输入手机号" />
+      </view>
+    </view>
+    <view class="weui-cell weui-cell_input weui-cell_vcode">
+      <view class="weui-cell__hd">
+        <image src='/images/login/mycode.png' class='phone'></image>
+      </view>
+      <view class="weui-cell__bd ">
+        <input class="weui-input" type='number' name="verifyCode"  value='{{validcode}}' placeholder="请输入验证码" />
+      </view>
+      <view class="weui-cell__ft">
+        <button class="btn  wd88 p-0" disabled="{{validcodeCanTap?'':'disabled'}}" bindtap='getValidcodeMsg'>{{validcode_placeholder}}</button>
+      </view>
+    </view>
+
+
+    <view hidden="{{shopid}}" class="weui-cell weui-cell_input weui-cell_vcode ">
+      <view class="weui-cell__hd">
+        <image src='/images/login/lock.png' class='phone'></image>
+      </view>
+      <view class="weui-cell__bd">
+        <input class="weui-input" value='{{shopid}}' name="shopCode" placeholder="请输入店铺ID" />
+      </view>
+      <view class="weui-cell__ft">
+      </view>
+    </view>
+
+      <view class="weui-cell weui-cell_input weui-cell_vcode">
+       </view>
+  </view>
+
+  <view class="login">  
+    <button class='btn h80' formType="submit">登录{{wx.getStorageSync('access_token')}}</button>
+  </view>
+
+  <!-- <official-account bindload='oaLoad' binderror='oaError'>关注秒账公众号</official-account> -->
+
+<!-- <lazyRoll id="test">
+  <view class='proDetail flex' wx:for="{{array}}" style="top:{{item._top}}pt;">
+   <view>
+          这一条记录是：{{item.name}} {{item._index}}
+        </view>
+          </view>
+</lazyRoll> -->
+
+
+</view>
+</form>,/* pages/login/index.wxss */
+page{
+  background: #fff;
+}
+
+button {
+    background: #00A6F5;
+    color: #FFFFFF;
+    height: 64rpx;
+    font-size: 26rpx;
+}
+
+.button-hover {
+    background: #FFFFFF;
+    color: #00A6F5;
+}
+.shoplogo{
+  margin-top: 32rpx;
+  text-align: center;
+  margin-bottom: 64rpx;
+}
+.shoplogoimg{
+  width: 168rpx;
+  height:168rpx;
+}
+.shoplogoname{
+   margin-top: 24rpx;
+   font-size: 15px;
+}
+.logo{
+  margin-top: 118rpx;
+  text-align: center;
+  margin-bottom: 124rpx;
+}
+.logoimg{
+  width: 280rpx;
+  height:120rpx;
+}
+
+.form{
+  padding: 0 24rpx 0 0;
+}
+
+.phone{
+  width: 36rpx;
+  height: 36rpx;
+}
+
+.login_first_input:before{
+  border-top:0;
+}
+
+.weui-cell__hd image{
+ margin-top: 24rpx;
+}
+
+.weui-cell__bd{
+  padding-left:10rpx;
+  
+}
+.weui-cell__bd input{
+  margin-top: 24rpx;
+height: 40rpx;
+}
+.wd88{
+width: 176rpx;
+}
+
+.h20{
+  height: 40rpx;
+}
+.h64{
+  height: 64rpx;
+}
+.h80{
+  height: 80rpx;
+}
+.btn{
+  height: 64rpx;
+  margin: 16rpx 0;
+}
+
+.p-0{
+  padding: 0;
+}
+
+.login{
+  padding: 64rpx 24rpx ;
+}
+,//logs.js
+const util = require('../../utils/util.js')
+
+// Page({
+//   data: {
+//     logs: [],
+//     src:''
+//   },
+//   onLoad: function () {
+//     this.setData({
+//       logs: (wx.getStorageSync('logs') || []).map(log => {
+//         return util.formatTime(new Date(log))
+//       })
+//     })
+//   },
+//   takePhoto() {
+//     const ctx = wx.createCameraContext()
+//     ctx.takePhoto({
+//       quality: 'high',
+//       success: (res) => {
+//         this.setData({
+//           src: res.tempImagePath
+//         })
+//       }
+//     })
+//   },
+//   error(e) {
+//     console.log(e.detail)
+//   }
+// })
+Page({
+  data: {
+
+  },
+  onLoad: function (options) {
+
+  },
+  onReady: function () {
+
+  },
+  onShow: function () {
+    app.HttpService.getPageList({
+      pageSize: 10,
+      pageNum: 0
+    }).then((res) => {
+      console.log(res)
+    }).catch((res) => {
+
+    })
+  },
+  onPullDownRefresh: function () {
+
+  },
+})
+,{
+  "navigationBarTitleText": "查看启动日志"
+},<!--logs.wxml-->
+<!-- <view class="container log-list">
+  <block wx:for="{{logs}}" wx:for-item="log">
+    <text class="log-item">{{index + 1}}. {{log}}</text>
+  </block>
+</view> -->
+<camera device-position="back" flash="off" binderror="error" style="width: 100%; height: 300px;"></camera>
+<button type="primary" bindtap="takePhoto">拍照</button>
+<view>预览</view>
+<image mode="widthFix" src="{{src}}"></image>
+,.log-list {
+  display: flex;
+  flex-direction: column;
+  padding: 40rpx;
+}
+.log-item {
+  margin: 10rpx;
+}
+,const app = getApp();
+import AcFunc from '../../helpers/acFunc.js'
+Page({
+  data: {
+    userlist:{},
+  },
+  tobrowseshop:function(){
+    wx.navigateTo({
+      url: '/pages/myhome/browseshop/browseshop'
+    })
+  },
+  tobbaseinfo: function () {
+    wx.navigateTo({
+      url: '/pages/myhome/baseinfo/baseinfo'
+    })
+  },
+  outLogo(){
+    app.HttpService.outlogo().then(res=>{
+      app.globalData.loginInfo = null
+      app.logout();
+      app.clearSet();
+      app.globalData.loginInfo=null
+      if(res){
+        wx.navigateTo({
+          url: '/pages/login/index',
+        })
+      }
+    })
+  },
+  onLoad: function (options) {
+  },
+  onShow: function () {
+    wx.setNavigationBarTitle({
+      title: '我的'
+    })
+    this.userInfores();
+    app.setMsgCount()
+  },
+  //查询用户基本信息
+  userInfores(){
+    let userlist = this.data.userlist;
+    app.HttpService.userInfo().then(res=>{
+      console.log(JSON.stringify(res))
+      // app.AcFunc.myTotal(res.name)
+      res.imgurl = res.photo ? app.getimg('thumbnail', res.photo) : 'http://www.ydcfo.com/chatLogo.png'
+      if (!res.name) {
+        res.name = '某用户'
+      }
+      this.setData({
+        userlist: res,
+        largeimg: res.imgurl
+      })
+    })
+  },
+  onShareAppMessage: function () {
+    let url =''
+    if (wx.getStorageSync('owner').cloudShopVO.shareUrl){
+      let i = wx.getStorageSync('owner').cloudShopVO.shareUrl.indexOf('?')
+      url = wx.getStorageSync('owner').cloudShopVO.shareUrl.slice(i);
+    }
+    return {
+      title: wx.getStorageSync('owner').cloudShopVO.name,
+      path: '/pages/index/index'+url,
+      imageUrl:'/images/sharelogo.jpg'
+    }
+  },
+  showimgBig(event){
+    AcFunc.imgBig(event)
+  }
+}),{"navigationBarTitleText": "我的"},<view class='myinfo flex just-con-b align-center' bindtap='tobbaseinfo'>
+  <view class='self-center flex'>
+    <view><image src='{{userlist.imgurl}}' mode='aspectFit' class='mylogo' catchtap="showimgBig" data-src='{{userlist.imgurl}}'></image></view>
+    <view class='self-center'>
+      <view class='myname'>{{userlist.name}}</view>
+      <view class='mytel'>电话：{{userlist.phone}}</view>
+    </view>
+  </view>
+  <view class='self-center'><image src='/images/my/tonext.png' class='tonextimg'></image></view>
+</view>
+<view class='myinfo myinfo1'>
+  <view class='flex myinfolist' bindtap='tobrowseshop'>
+    <view class='wid1'><image src='/images/my/browse.png' class='tolistimg'></image></view>
+    <view class='myinfoborder wid2'>我浏览的店铺</view>
+  </view>
+  <view class='flex myinfolist'>
+    <view class='wid1'><image src='/images/my/share.png' class='tolistimg'></image></view>
+    <button class='wid2' open-type="share">分享店铺</button>
+  </view>
+</view>
+<view class='outlogo' bindtap='outLogo'>退出登录</view>
+,page{
+  background: #EFEFF4;
+}
+.myinfo{
+  width: 750rpx;
+  height: 212rpx;
+  background: #fff;
+  padding: 26rpx;
+  box-sizing: border-box;
+  margin-bottom: 24rpx;
+}
+.mylogo{
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 120rpx;
+  -webkit-box-shadow: #8DD4F6 0px 0px 16px;
+  -moz-box-shadow: #8DD4F6 0px 0px 16px;
+  box-shadow: #8DD4F6 0px 0px 16px;
+  margin-right: 30rpx;
+}
+.tonextimg{
+  width: 12rpx;
+  height: 22rpx;
+}
+.myname{
+  font-size: 32rpx;
+  color: #666;
+  margin-bottom: 16rpx;
+}
+.mytel{
+  font-size: 22rpx;
+  color: #333;
+}
+.myinfolist{
+  height: 104rpx;
+  line-height: 104rpx;
+  width: 750rpx;
+}
+.wid1{
+  width: 90rpx;
+  text-align: center;
+}
+button.wid2::after{
+  border: 0;
+}
+.wid2{
+  padding: 0;
+  text-align: left;
+  background: #fff;
+  width: 660rpx;
+  font-size: 32rpx;
+  color: #333;
+  line-height: 104rpx;
+}
+.myinfoborder{
+  border-bottom: 2rpx solid #F2F2F2;
+}
+.myinfo1{
+  padding: 0 26rpx;
+  overflow: hidden;
+}
+.outlogo{
+  height: 80rpx;
+  line-height: 80rpx;
+  text-align: center;
+  background: #fff;
+  color: #FE3824;
+  font-size: 36rpx;
+}
+.tolistimg{
+  width: 36rpx;
+  height: 36rpx;
+  vertical-align: middle;
+}
+,const app = getApp()
+import AcFunc from '../../helpers/acFunc.js'
+let date = new Date()
+let year = date.getFullYear()
+let month = date.getMonth() + 1
+let day = date.getDate()
+let today = year + '-' + month + '-' + day
+let sortanimation = wx.createAnimation({
+  duration: 400,
+  timingFunction: 'ease',
+})
+let downanimation = wx.createAnimation({
+  duration: 400,
+  timingFunction: 'ease',
+})
+let lineanimation = wx.createAnimation({
+  duration: 300,
+  timingFunction: 'ease',
+})
+Page({
+  data: {
+    p: null,
+    sortList: [],
+    sortListorder: [{
+      sorttype: 'orderNumber',
+      name: '单号',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'contractAmt',
+      name: '金额',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'orderDate',
+      name: '日期',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'cloudStatus',
+      name: '订单状态',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'orderPaidStatus',
+      name: '付款状态',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'orderStatus',
+      name: '收货状态',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'clearSort',
+      name: '清除排序',
+      sortorder: 'asc'
+    }],
+    sortListlogist: [{
+      sorttype: 'orderNo',
+      name: '物流单号',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'enterpriseName',
+      name: '物流公司',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'orderDate',
+      name: '下单日期',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'consignee',
+      name: '收货人',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'deliveryNo',
+      name: '运单号',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'orderStatus',
+      name: '物流状态',
+      sortorder: 'asc'
+    }, {
+      sorttype: 'clearSort',
+      name: '清除排序',
+      sortorder: 'asc'
+    }],
+    sortShow: false,
+    sortAnimate: {},
+    downAnimate: {},
+    lineAnimate: {},
+    pamars: '',
+    orderBar: {
+      order: true,
+      logist: false
+    },
+    cloudSearchobj: {
+      'pageNum': 0,
+      'pageSize': 10
+    },
+    logistSearchobj: {
+      'pageNum': 0,
+      'pageSize': 10
+    },
+    cloudlist: [],
+    logistlist: [],
+    cloudrefresh: true,
+    logistrefresh: true,
+    cloudtotal: 0,
+    logisttotal: 0,
+    placeholdertxt: '输入单号、产品名称、备注查找',
+    sortordername: '排序',
+    filtersure: false, //在筛选页面点“确定”返回此值为true,直接返回的话，此值为false
+    firstlogistorder: true
+  },
+  onLoad: function(options) {
+
+  },
+  onShow: function() {
+    wx.setNavigationBarTitle({
+      title: '订单'
+    })
+    let sortListorder = this.data.sortListorder
+    let sortListlogist = this.data.sortListlogist
+    for (let a = 0; a < sortListorder.length; a++) {
+      sortListorder[a].sortorder = 'asc'
+    }
+    for (let b = 0; b < sortListlogist.length; b++) {
+      sortListlogist[b].sortorder = 'asc'
+    }
+    if (this.data.sortShow) {
+      this.endSort()
+    }
+    if (!wx.getStorageSync('refreshorder')) { //tarbar切换时刷新
+      lineanimation.left('0').step()
+      this.setData({
+        firstlogistorder: true,
+        sortList: sortListorder,
+        sortListlogist: sortListlogist,
+        lineAnimate: {},
+        sortAnimate: {},
+        downAnimate: {},
+        pamars: '',
+        inputval: '',
+        orderBar: {
+          order: true,
+          logist: false
+        },
+        cloudSearchobj: {
+          'pageNum': 0,
+          'pageSize': 10
+        },
+        logistSearchobj: {
+          'pageNum': 0,
+          'pageSize': 10
+        },
+        cloudlist: [],
+        logistlist: [],
+        cloudrefresh: true,
+        logistrefresh: true,
+        cloudtotal: 0,
+        logisttotal: 0,
+        placeholdertxt: '输入单号、产品名称、备注查找',
+        sortordername: '排序',
+        lineAnimate: lineanimation.export(),
+      })
+      this.getCloudlist();
+    } else { //跳转订单详情/筛选页面后，返回订单列表刷新
+      if (this.data.orderBar.order) {
+        if (!this.data.filtersure) { //从云单详情页左上角直接返回,返回时的筛选条件以带去的为主，除非点击了“确定”才以新的筛选条件搜索（重置也需点击确认）
+          let ss = this.data.cloudSearchobj
+          ss.pageNum = 0
+          ss.pageSize = 10
+          this.setData({
+            cloudSearchobj: ss,
+            cloudlist: [],
+            cloudrefresh: true,
+            cloudtotal: 0,
+            sortordername: '排序',
+          })
+        }
+        this.getCloudlist();
+      } else {
+        if (!this.data.filtersure) { //从物流详情页左上角直接返回,返回时的筛选条件以带去的为主，除非点击了“确定”才以新的筛选条件搜索（重置也需点击确认）
+          let ss = this.data.logistSearchobj
+          ss.pageNum = 0
+          ss.pageSize = 10
+          this.setData({
+            logistSearchobj: ss,
+            logistlist: [],
+            logistrefresh: true,
+            logisttotal: 0,
+            sortordername: '排序',
+          })
+        }
+        this.getlogistlist();
+      }
+    }
+    app.setMsgCount()
+    wx.setStorageSync('refreshorder', false);
+  },
+  //获取云单列表
+  getCloudlist() {
+    app.HttpService.orderList(this.data.cloudSearchobj).then((res) => {
+      this.EntoChclound(res);
+    })
+  },
+  //获取物流单列表
+  getlogistlist() {
+    app.HttpService.logistList(this.data.logistSearchobj).then((res) => {
+      this.EntoChlogist(res);
+    })
+  },
+  toorderDetail(e) {
+    wx.setStorageSync('refreshorder', true);
+    wx.navigateTo({
+      url: '/pages/order/orderDetail/orderDetail?id=' + e.currentTarget.dataset.cloundid,
+    })
+  },
+  tologistDetail(e) {
+    wx.setStorageSync('refreshorder', true);
+    wx.navigateTo({
+      url: '/pages/order/logistDetail/logistDetail?id=' + e.currentTarget.dataset.logistid + '&isshare=' + e.currentTarget.dataset.isshare,
+    })
+  },
+  bindSort: function(e) {
+    if (this.data.orderBar.logist) {
+      this.setData({
+        sortList: this.data.sortListlogist
+      })
+    } else {
+      this.setData({
+        sortList: this.data.sortListorder
+      })
+    }
+    let sortShow = this.data.sortShow;
+    if (sortShow) {
+      this.endSort()
+    } else {
+      sortanimation.top('182rpx').step()
+      downanimation.rotate('180').step()
+      this.setData({
+        sortAnimate: sortanimation.export(),
+        downAnimate: downanimation.export(),
+        sortShow: true
+      })
+    }
+  },
+  //模糊搜素
+  searchtxt() {
+    let search = {}
+    if (this.data.orderBar.order) {
+      search = this.data.cloudSearchobj
+    } else {
+      search = this.data.logistSearchobj
+    }
+    search.mobileSearch = this.data.pamars
+    search.pageNum = 0
+    search.sortList = []
+    if (this.data.orderBar.order) {
+      this.setData({
+        cloudlist: [],
+        cloudSearchobj: search,
+        cloudrefresh: true,
+      })
+      this.getCloudlist()
+    } else {
+      this.setData({
+        logistlist: [],
+        logistSearchobj: search,
+        logistrefresh: true,
+      })
+      this.getlogistlist()
+    }
+
+  },
+  //排序事件
+  BindSearch(e) {
+    let sort = {};
+    let sortindex = e.target.dataset.sortindex;
+    let sortname = e.target.dataset.sortname;
+    let search = {};
+    let sortres = {}
+    if (this.data.orderBar.order) {
+      search = this.data.cloudSearchobj;
+      sortres = this.data.sortListorder;
+    } else {
+      search = this.data.logistSearchobj;
+      sortres = this.data.sortListlogist;
+    }
+
+    let sortordername = this.data.sortordername
+    sort.sortColumn = e.target.dataset.type;
+    sort.sortOrder = e.target.dataset.sort;
+    search.sortList = [];
+    search.sortList.push(sort);
+    search.pageNum = 0;
+    search.mobileSearch = '';
+    if (sortres[sortindex].sortorder == 'desc') {
+      sortres[sortindex].sortorder = 'asc';
+      sortordername = sortname + '倒序';
+    } else {
+      sortres[sortindex].sortorder = 'desc';
+      sortordername = sortname + '正序';
+    }
+    if (e.target.dataset.type == 'clearSort') {
+      sortordername = '排序';
+      search.sortList = [];
+    }
+    this.endSort();
+    if (this.data.orderBar.order) {
+      this.setData({
+        sortList: sortres,
+        cloudSearchobj: search,
+        cloudrefresh: true,
+        cloudlist: [],
+        sortordername: sortordername
+      });
+      this.getCloudlist()
+    } else {
+      this.setData({
+        sortListlogist: sortres,
+        logistSearchobj: search,
+        logistrefresh: true,
+        logistlist: [],
+        sortordername: sortordername
+      });
+      this.getlogistlist()
+    }
+  },
+  endSort: function() {
+    sortanimation.top('-100%').step()
+    downanimation.rotate('0').step()
+    this.setData({
+      sortAnimate: sortanimation.export(),
+      downAnimate: downanimation.export(),
+      sortShow: false
+    })
+  },
+  inputfocus() {
+    if (this.data.sortShow) {
+      this.endSort()
+    }
+  },
+  inputChange: function(e) {
+    this.setData({
+      pamars: e.detail.value
+    })
+  },
+  clickBar: function(e) {
+    if (this.data.sortShow) {
+      this.endSort()
+    }
+    let ind = e.currentTarget.dataset.index //{ order: true, logist: false }
+    let left = 160 * ind
+    let orderBar = this.data.orderBar
+    let placeholdertxt = this.data.placeholdertxt
+    if (ind == 0) {
+      orderBar.order = true
+      orderBar.logist = false
+      placeholdertxt = '输入单号、产品名称、备注查找'
+    } else {
+      orderBar.logist = true
+      orderBar.order = false
+      placeholdertxt = '输入收货人、电话号码、单号、制单人查找'
+    }
+    lineanimation.left(left + 'rpx').step()
+    //第一次点到物流单时调获取物流单方法
+    if (this.data.firstlogistorder) {
+      this.getlogistlist();
+    }
+    this.setData({
+      lineAnimate: lineanimation.export(),
+      orderBar: orderBar,
+      placeholdertxt: placeholdertxt,
+      sortordername: '排序',
+      firstlogistorder: false,
+      inputval: ''
+    });
+  },
+  //筛选事件
+  tofilter() {
+    let filter = true
+    let search = JSON.stringify(this.data.cloudSearchobj)
+    if (this.data.orderBar.logist) {
+      filter = false
+      search = JSON.stringify(this.data.logistSearchobj)
+    }
+    wx.setStorageSync('refreshorder', true);
+    wx.navigateTo({
+      url: '/pages/order/orderfilter/index?filter=' + filter + '&search=' + search,
+    })
+  },
+  //转换云单
+  EntoChclound(data) {
+    let p = getApp().P();
+    let datalist = data.list
+    let obj = {
+      'waitReceive': ['待接单', 'orderStatus subOrder', ],
+      'refused': ['已拒绝', 'orderStatus refuseOrder', ],
+      'deleted': ['卖家删除', 'orderStatus deleteOrder'],
+      'received': ['已完成', 'orderStatus overOrder',
+        {
+          'noSalesPaid': ['未付款', 'orderpay unpay'],
+          'someSalesPaid': ['部分付款', 'orderpay partpay'],
+          'allSalesPaid': ['全部付款', 'orderpay allpay'],
+          'overchargeSalesPaid': ['超付款', 'orderpay overpay']
+        },
+        {
+          'unDelivered': ['未收货', '/images/order/unsend.png'],
+          'partialDelivered': ['部分收货', '/images/order/partsend.png'],
+          'allDelivered': ['全部收货', '/images/order/addsend.png'],
+          'stop': ['拒收', '/images/order/refuse.png']
+        },
+      ],
+      'shared': ['分享订单', 'orderStatus shareOrder',
+        {
+          'noSalesPaid': ['未付款', 'orderpay unpay'],
+          'someSalesPaid': ['部分付款', 'orderpay partpay'],
+          'allSalesPaid': ['全部付款', 'orderpay allpay'],
+          'overchargeSalesPaid': ['超付款', 'orderpay overpay'],
+          // 'waitSalesPaid': ['草稿', 'waitpay']
+        },
+        {
+          'unDelivered': ['未收货', '/images/order/unsend.png'],
+          'partialDelivered': ['部分收货', '/images/order/partsend.png'],
+          'allDelivered': ['全部收货', '/images/order/addsend.png'],
+          'stop': ['拒收', '/images/order/refuse.png'],
+          'wait': ['草稿', '/images/order/wait.png']
+        },
+      ]
+    }
+    for (let a = 0; a < datalist.length; a++) {
+      datalist[a].customview = {};
+      let state1 = datalist[a].cloudStatus; //云单状态
+      let state2 = datalist[a].orderPaidStatus; //付款状态
+      let state3 = datalist[a].orderStatus; //送货状态
+      if (state1 == 'received') {
+        let obj1 = {}
+        obj1.paytxt = obj[state1][2][state2][0];
+        obj1.paycolor = obj[state1][2][state2][1];
+        obj1.sendimg = obj[state1][3][state3][1];
+        if (state2 == 'noSalesPaid' || state2 == 'someSalesPaid') {
+          obj1.moneyshow = '未付款：￥' + AcFunc.money(datalist[a].unpaidAmt, 2, false)
+          obj1.moneyshowcolor = 'classtwo'
+        }
+        if (state2 == 'overchargeSalesPaid') {
+          obj1.moneyshow = '超付款：￥' + AcFunc.money(datalist[a].overpaidAmt, 2, false)
+        }
+        datalist[a].customview = obj1
+      } else if (state1 == 'refused') {
+        let obj1 = {}
+        obj1.paytxt = datalist[a].refuseReason;
+        obj1.paycolor = 'refuseclasstwo'
+        datalist[a].customview = obj1
+      } else if (state1 == 'shared') {
+        let obj1 = {}
+        obj1.paytxt = obj[state1][2][state2][0];
+        obj1.paycolor = obj[state1][2][state2][1];
+        obj1.sendimg = obj[state1][3][state3][1];
+        if (state2 == 'noSalesPaid' || state2 == 'someSalesPaid') {
+          obj1.moneyshow = '未付款：￥' + AcFunc.money(datalist[a].unpaidAmt, 2, false)
+          obj1.moneyshowcolor = 'classtwo'
+        }
+        if (state2 == 'overchargeSalesPaid') {
+          obj1.moneyshow = '超付款：￥' + AcFunc.money(datalist[a].overpaidAmt, 2, false)
+        }
+        datalist[a].customview = obj1
+        datalist[a].shareicon = true
+      }
+      datalist[a].classone = obj[state1][1]
+      datalist[a].cloudStatus = obj[datalist[a].cloudStatus][0];
+      datalist[a].contractAmt = '￥' + AcFunc.money(datalist[a].contractAmt, 2, false);
+      datalist[a].orderDate = datalist[a].orderDate.substring(0, 11);
+    }
+    console.log(datalist);
+    let cloudlist = this.data.cloudlist
+    cloudlist = cloudlist.concat(datalist)
+    this.setData({
+      p: p,
+      cloudlist: cloudlist,
+      cloudtotal: data.total,
+      filtersure: false
+    })
+    if (this.data.cloudlist.length == this.data.cloudtotal) {
+      this.setData({
+        cloudrefresh: false
+      })
+    }
+  },
+  //物流单
+  EntoChlogist(data) {
+    let datalist = data.list;
+    for (let b = 0; b < datalist.length; b++) {
+      datalist[b].orderDate = datalist[b].orderDate.substring(0, 11);
+      if (datalist[b].paymentStatus == 'paid' && datalist[b].balanceAmt > 0) { //差额未付的图标显示
+        datalist[b].balanceAmtimg = true
+      }
+      if (datalist[b].deliveryNo) {
+        datalist[b].deliveryNo = '运单号:' + datalist[b].deliveryNo
+      }
+    }
+    let logistlist = this.data.logistlist
+    logistlist = logistlist.concat(datalist)
+    this.setData({
+      logistlist: logistlist,
+      logisttotal: data.total,
+      filtersure: false
+    })
+    if (this.data.logistlist.length == this.data.logisttotal) {
+      this.setData({
+        logistrefresh: false
+      })
+    }
+    console.log(datalist)
+  },
+  //上拉加载分页
+  onReachBottom() {
+    if (this.data.orderBar.order) {
+      if (this.data.cloudrefresh) {
+        var search = this.data.cloudSearchobj;
+        search.pageNum++;
+        this.setData({
+          cloudSearchobj: search
+        });
+        this.getCloudlist();
+      }
+    } else {
+      if (this.data.logistrefresh) {
+        var search = this.data.logistSearchobj;
+        search.pageNum++;
+        this.setData({
+          logistSearchobj: search
+        });
+        this.getlogistlist();
+      }
+    }
+  },
+  //下拉刷新
+  onPullDownRefresh() {
+    if (this.data.orderBar.order) {
+      let sortListorder = this.data.sortListorder
+      for (let a = 0; a < sortListorder.length; a++) {
+        sortListorder[a].sortorder = 'asc'
+      }
+      if (this.data.sortShow) {
+        this.endSort()
+      }
+      lineanimation.left('0').step()
+      this.setData({
+        // firstlogistorder: true,
+        sortList: sortListorder,
+        lineAnimate: {},
+        sortAnimate: {},
+        downAnimate: {},
+        pamars: '',
+        inputval: '',
+        orderBar: {
+          order: true,
+          logist: false
+        },
+        cloudSearchobj: {
+          'pageNum': 0,
+          'pageSize': 10
+        },
+        cloudlist: [],
+        cloudrefresh: true,
+        cloudtotal: 0,
+        placeholdertxt: '输入单号、产品名称、备注查找',
+        sortordername: '排序',
+        lineAnimate: lineanimation.export(),
+      })
+      this.getCloudlist();
+    } else {
+      let sortListlogist = this.data.sortListlogist
+      for (let b = 0; b < sortListlogist.length; b++) {
+        sortListlogist[b].sortorder = 'asc'
+      }
+      if (this.data.sortShow) {
+        this.endSort()
+      }
+      this.setData({
+        // firstlogistorder: true,
+        sortListlogist: sortListlogist,
+        lineAnimate: {},
+        sortAnimate: {},
+        downAnimate: {},
+        pamars: '',
+        inputval: '',
+        logistSearchobj: {
+          'pageNum': 0,
+          'pageSize': 10
+        },
+        logistlist: [],
+        logistrefresh: true,
+        logisttotal: 0,
+        placeholdertxt: '输入收货人、电话号码、单号、制单人查找',
+        sortordername: '排序',
+        lineAnimate: lineanimation.export(),
+      })
+      this.getlogistlist();
+    }
+    wx.stopPullDownRefresh();
+  },
+})
